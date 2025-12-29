@@ -177,16 +177,16 @@ def main():
         event_time='date',
     )
   
-    # Ensure feature types match Feature Group schema
-    INT_COLS = [
-        "is_weekend",
+    INT32_COLS = [
         "day_of_week",
+        "month",
+        "is_weekend",
         "day_of_year",
     ]
     
-    for col in INT_COLS:
-        if col in featured_df.columns:
-            featured_df[col] = featured_df[col].astype(int)
+    for col in INT32_COLS:
+        if col in merged_df.columns:
+            merged_df[col] = merged_df[col].astype("int32")
 
 
     # Insert data
