@@ -176,6 +176,18 @@ def main():
         primary_key=['date'],
         event_time='date',
     )
+  
+    # Ensure feature types match Feature Group schema
+    INT_COLS = [
+        "is_weekend",
+        "day_of_week",
+        "day_of_year",
+    ]
+    
+    for col in INT_COLS:
+        if col in featured_df.columns:
+            featured_df[col] = featured_df[col].astype(int)
+
 
     # Insert data
     electricity_fg.insert(featured_df, overwrite=False)
