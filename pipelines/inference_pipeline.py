@@ -39,7 +39,7 @@ def load_model_local(experiment_name='default'):
             f"Train a model first: python pipelines/training_pipeline.py --mode local"
         )
 
-    model = xgb.XGBRegressor()
+    model = xgb.Booster()
     model.load_model(os.path.join(model_dir, "model.json"))
 
     with open(os.path.join(model_dir, "feature_names.json"), 'r') as f:
@@ -59,7 +59,7 @@ def load_model_hopsworks(storage):
     # Download model files
     model_dir = model.download()
 
-    xgb_model = xgb.XGBRegressor()
+    xgb_model = xgb.Booster()
     xgb_model.load_model(os.path.join(model_dir, "model.json"))
 
     with open(os.path.join(model_dir, "feature_names.json"), 'r') as f:
@@ -373,7 +373,7 @@ def main():
     # Step 4: Prepare features and predict
     print(f"\n[4/5] Generating predictions...")
     forecast_features = prepare_forecast_features(weather_forecast, historical_df, feature_names)
-    predictions = model.predict(forecast_features)
+    predictions = model.predict(xgb.DMatrix(forecast_features))
 
     forecast_df = weather_forecast[['date']].copy()
     forecast_df['predicted_price'] = predictions
