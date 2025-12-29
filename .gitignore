@@ -42,11 +42,6 @@ models/
 *.joblib
 *.h5
 
-# Outputs
-outputs/
-*.png
-*.csv
-
 # Logs
 *.log
 logs/
