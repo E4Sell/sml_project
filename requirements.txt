@@ -31,9 +31,6 @@ gradio>=4.0.0
 # Using unpinned version (installs latest compatible: 4.6.0+)
 hopsworks
 hopsworks[python]
-hopsworks==4.2.*
-hsfs==4.2.*
-hsml==4.2.*
 
 # Pin boto3/botocore to prevent pip backtracking on urllib3 conflict
 # (Non-breaking: works with urllib3 2.x despite conservative constraint)
