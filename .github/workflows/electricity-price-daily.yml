@@ -31,7 +31,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -42,7 +41,7 @@ jobs:
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
-          echo "Collecting yesterday's data..."
+          echo "Collecting earlier data..."
           python pipelines/feature_backfill.py \
             --mode production \
             --start-date $(date -d "3 days ago" +%Y-%m-%d) \
