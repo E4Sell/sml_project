@@ -29,7 +29,7 @@ gradio>=4.0.0
 
 # Production mode (Hopsworks Feature Store)
 # Using unpinned version (installs latest compatible: 4.6.0+)
-hopsworks
+hopsworks==4.2.*
 hopsworks[python]
 
 # Pin boto3/botocore to prevent pip backtracking on urllib3 conflict
