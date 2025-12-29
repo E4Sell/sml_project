@@ -11,6 +11,8 @@ Usage:
     fg = fs.get_or_create_feature_group(name='electricity_price', version=1)
     fg.insert(df)
 """
+from dotenv import load_dotenv
+load_dotenv()
 
 import os
 from typing import Literal

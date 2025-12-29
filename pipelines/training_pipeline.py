@@ -105,11 +105,13 @@ def train_model(X_train, y_train, X_test, y_test):
         'test_rmse': float(np.sqrt(mean_squared_error(y_test, y_pred_test))),
         'test_mae': float(mean_absolute_error(y_test, y_pred_test)),
         'test_r2': float(r2_score(y_test, y_pred_test)),
-        'training_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'n_training_samples': len(X_train),
-        'n_test_samples': len(X_test),
-        'best_iteration': int(model.best_iteration) if hasattr(model, 'best_iteration') else model.n_estimators
+        'n_training_samples': float(len(X_train)),
+        'n_test_samples': float(len(X_test)),
+        'best_iteration': float(
+            model.best_iteration if hasattr(model, 'best_iteration') else model.n_estimators
+        ),
     }
+
 
     return model, metrics
 
@@ -155,11 +157,17 @@ def save_model_hopsworks(model, feature_names, metrics, storage, experiment_name
 
         # Register model
         model_name = f"electricity_price_xgboost"
+        trained_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         registered_model = mr.python.create_model(
             name=model_name,
             metrics=metrics,
-            description=f"XGBoost model for electricity price prediction - {experiment_name}"
+            description=(
+                f"XGBoost model for electricity price prediction - {experiment_name} "
+                f"(trained_at={trained_at})"
+            ),
         )
+
 
         registered_model.save(model_dir)
         print(f"  ✅ Model saved to Hopsworks Model Registry: {model_name}")

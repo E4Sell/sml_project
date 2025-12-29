@@ -174,11 +174,11 @@ def main():
         version=1,
         description=f"Electricity prices for {args.location} with engineered features",
         primary_key=['date'],
-        event_time='date'
+        event_time='date',
     )
 
     # Insert data
-    electricity_fg.insert(featured_df, overwrite=True)
+    electricity_fg.insert(featured_df, overwrite=False)
 
     print(f"  ✅ Saved {len(featured_df)} records to feature group 'electricity_price'")
 

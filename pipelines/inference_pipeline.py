@@ -175,13 +175,28 @@ def create_comparison_visualization(historical_df, output_path='outputs/predicte
         return None
 
     tracking_df = pd.read_csv(tracking_file)
-    tracking_df['prediction_date'] = pd.to_datetime(tracking_df['prediction_date'])
-    tracking_df['target_date'] = pd.to_datetime(tracking_df['target_date'])
 
-    # Get actual prices from historical data
-    historical_df['date'] = pd.to_datetime(historical_df['date'])
+    tracking_df['target_date'] = (
+        pd.to_datetime(tracking_df['target_date'], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
+
+    historical_df['date'] = (
+        pd.to_datetime(historical_df['date'], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
+
     actual_prices = historical_df[['date', 'price_sek_kwh_mean']].copy()
     actual_prices.columns = ['target_date', 'actual_price']
+
+    comparison_df = tracking_df.merge(
+        actual_prices,
+        on='target_date',
+        how='inner'
+    )
+
 
     # Merge predictions with actuals (only for dates where we have actuals)
     comparison_df = tracking_df.merge(actual_prices, on='target_date', how='inner')
@@ -372,6 +387,8 @@ def main():
 
     # Step 5: Save results
     print(f"\n[5/5] Saving results...")
+
+    os.makedirs("outputs", exist_ok=True)
 
     # Save CSV
     today_str = datetime.now().strftime('%Y%m%d')
