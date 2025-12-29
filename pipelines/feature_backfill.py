@@ -183,10 +183,6 @@ def main():
         "is_weekend",
         "day_of_year",
     ]
-    
-    for col in INT32_COLS:
-        if col in merged_df.columns:
-            merged_df[col] = merged_df[col].astype("int32")
 
 
     # Insert data
