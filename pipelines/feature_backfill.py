@@ -42,7 +42,7 @@ def engineer_features(weather_df, price_df):
     # Temporal features (daily granularity)
     merged_df['day_of_week'] = merged_df['date'].dt.dayofweek
     merged_df['month'] = merged_df['date'].dt.month
-    merged_df['is_weekend'] = (merged_df['day_of_week'] >= 5).astype(int)
+    merged_df['is_weekend'] = (merged_df['day_of_week'] >= 5).astype('int32')
     merged_df['day_of_year'] = merged_df['date'].dt.dayofyear
 
     # Weather features
