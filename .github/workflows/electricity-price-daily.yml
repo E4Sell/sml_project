@@ -73,14 +73,19 @@ jobs:
         run: |
           python -m pip install --upgrade huggingface_hub
           python - <<'PY'
+          import os
           from huggingface_hub import upload_folder
+      
+          token = os.environ["HF_TOKEN"]
+      
           upload_folder(
               folder_path="outputs",
               path_in_repo="outputs",
               repo_id="eforse01/Electricity_price_predictor",
               repo_type="space",
-              token="${HF_TOKEN}",
+              token=token,
           )
+          print("✅ Uploaded outputs/ to Hugging Face Space")
           PY
 
 
