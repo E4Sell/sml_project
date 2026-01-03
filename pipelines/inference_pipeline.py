@@ -210,6 +210,10 @@ def create_comparison_visualization(historical_df, output_path='outputs/predicte
     comparison_df = comparison_df.drop_duplicates('target_date', keep='last')
     comparison_df = comparison_df.sort_values('target_date')
 
+    comparison_df[['target_date', 'predicted_price', 'actual_price', 'prediction_date']].to_csv(
+      'outputs/comparison_timeseries.csv', index=False)
+
+
     # Calculate metrics
     comparison_df['error'] = comparison_df['predicted_price'] - comparison_df['actual_price']
     comparison_df['abs_error'] = comparison_df['error'].abs()
