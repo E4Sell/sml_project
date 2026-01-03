@@ -210,8 +210,16 @@ def create_comparison_visualization(historical_df, output_path='outputs/predicte
     comparison_df = comparison_df.drop_duplicates('target_date', keep='last')
     comparison_df = comparison_df.sort_values('target_date')
 
-    comparison_df[['target_date', 'predicted_price', 'actual_price', 'prediction_date']].to_csv(
-      'outputs/comparison_timeseries.csv', index=False)
+    # ---- Export timeseries for the Space UI (growing over time) ----
+    os.makedirs('outputs', exist_ok=True)
+    
+    comparison_out = comparison_df[['target_date', 'predicted_price', 'actual_price', 'prediction_date']].copy()
+    
+    # Make it nice/consistent for display (optional but recommended)
+    comparison_out['target_date'] = pd.to_datetime(comparison_out['target_date']).dt.strftime('%Y-%m-%d')
+    comparison_out['prediction_date'] = pd.to_datetime(comparison_out['prediction_date']).dt.strftime('%Y-%m-%d')
+    
+    comparison_out.to_csv('outputs/comparison_timeseries.csv', index=False)
 
 
     # Calculate metrics
