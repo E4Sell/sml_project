@@ -39,7 +39,7 @@ def load_model_local(experiment_name='default'):
             f"Train a model first: python pipelines/training_pipeline.py --mode local"
         )
 
-    model = xgb.XGBRegressor()
+    model = xgb.Booster()
     model.load_model(os.path.join(model_dir, "model.json"))
 
     with open(os.path.join(model_dir, "feature_names.json"), 'r') as f:
@@ -59,7 +59,7 @@ def load_model_hopsworks(storage):
     # Download model files
     model_dir = model.download()
 
-    xgb_model = xgb.XGBRegressor()
+    xgb_model = xgb.Booster()
     xgb_model.load_model(os.path.join(model_dir, "model.json"))
 
     with open(os.path.join(model_dir, "feature_names.json"), 'r') as f:
@@ -175,13 +175,35 @@ def create_comparison_visualization(historical_df, output_path='outputs/predicte
         return None
 
     tracking_df = pd.read_csv(tracking_file)
-    tracking_df['prediction_date'] = pd.to_datetime(tracking_df['prediction_date'])
-    tracking_df['target_date'] = pd.to_datetime(tracking_df['target_date'])
+
+    # Normalize dates to remove timezone for consistent merging
+    tracking_df['target_date'] = (
+        pd.to_datetime(tracking_df['target_date'], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
+    tracking_df['prediction_date'] = (
+        pd.to_datetime(tracking_df['prediction_date'], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
 
     # Get actual prices from historical data
-    historical_df['date'] = pd.to_datetime(historical_df['date'])
+    historical_df['date'] = (
+        pd.to_datetime(historical_df['date'], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
+
     actual_prices = historical_df[['date', 'price_sek_kwh_mean']].copy()
     actual_prices.columns = ['target_date', 'actual_price']
+
+    comparison_df = tracking_df.merge(
+        actual_prices,
+        on='target_date',
+        how='inner'
+    )
+
 
     # Merge predictions with actuals (only for dates where we have actuals)
     comparison_df = tracking_df.merge(actual_prices, on='target_date', how='inner')
@@ -194,6 +216,18 @@ def create_comparison_visualization(historical_df, output_path='outputs/predicte
     comparison_df = comparison_df.sort_values(['target_date', 'prediction_date'])
     comparison_df = comparison_df.drop_duplicates('target_date', keep='last')
     comparison_df = comparison_df.sort_values('target_date')
+
+    # ---- Export timeseries for the Space UI (growing over time) ----
+    os.makedirs('outputs', exist_ok=True)
+
+    comparison_out = comparison_df[['target_date', 'predicted_price', 'actual_price', 'prediction_date']].copy()
+
+    # Make it nice/consistent for display (optional but recommended)
+    comparison_out['target_date'] = pd.to_datetime(comparison_out['target_date']).dt.strftime('%Y-%m-%d')
+    comparison_out['prediction_date'] = pd.to_datetime(comparison_out['prediction_date']).dt.strftime('%Y-%m-%d')
+
+    comparison_out.to_csv('outputs/comparison_timeseries.csv', index=False)
+
 
     # Calculate metrics
     comparison_df['error'] = comparison_df['predicted_price'] - comparison_df['actual_price']
@@ -358,7 +392,7 @@ def main():
     # Step 4: Prepare features and predict
     print(f"\n[4/5] Generating predictions...")
     forecast_features = prepare_forecast_features(weather_forecast, historical_df, feature_names)
-    predictions = model.predict(forecast_features)
+    predictions = model.predict(xgb.DMatrix(forecast_features))
 
     forecast_df = weather_forecast[['date']].copy()
     forecast_df['predicted_price'] = predictions
@@ -372,6 +406,8 @@ def main():
 
     # Step 5: Save results
     print(f"\n[5/5] Saving results...")
+
+    os.makedirs("outputs", exist_ok=True)
 
     # Save CSV
     today_str = datetime.now().strftime('%Y%m%d')

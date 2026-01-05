@@ -11,6 +11,8 @@ Usage:
     fg = fs.get_or_create_feature_group(name='electricity_price', version=1)
     fg.insert(df)
 """
+from dotenv import load_dotenv
+load_dotenv()
 
 import os
 from typing import Literal
@@ -71,7 +73,8 @@ class HopsworksStorage:
                 )
 
             print("Connecting to Hopsworks...")
-            self._project = self._hopsworks.login()
+            # Connect to electricity_price project explicitly
+            self._project = self._hopsworks.login(project="electricity_price")
             self._fs = self._project.get_feature_store()
             print(f"✅ Connected to Hopsworks project: {self._project.name}")
 

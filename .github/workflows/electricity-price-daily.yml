@@ -31,7 +31,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -42,11 +41,14 @@ jobs:
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
-          echo "Collecting yesterday's data..."
+          TARGET_END=$(date -u -d "2 days ago" +%Y-%m-%d)
+          TARGET_START=$(date -u -d "9 days ago" +%Y-%m-%d)
+          echo "Backfilling ${TARGET_START} to ${TARGET_END} (window for lag/rolling features)..."
+      
           python pipelines/feature_backfill.py \
             --mode production \
-            --start-date $(date -d "yesterday" +%Y-%m-%d) \
-            --end-date $(date -d "yesterday" +%Y-%m-%d)
+            --start-date ${TARGET_START} \
+            --end-date ${TARGET_END}
 
       - name: Run Inference Pipeline (generate forecast)
         env:
@@ -63,6 +65,29 @@ jobs:
           commit_message: "Daily forecast generated [skip ci]"
           file_pattern: 'outputs/*.csv outputs/*.png'
           push_options: '--force'
+
+      - name: Upload outputs to Hugging Face Space
+        if: success()
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -m pip install --upgrade huggingface_hub
+          python - <<'PY'
+          import os
+          from huggingface_hub import upload_folder
+      
+          token = os.environ["HF_TOKEN"]
+      
+          upload_folder(
+              folder_path="outputs",
+              path_in_repo="outputs",
+              repo_id="eforse01/Electricity_price_predictor",
+              repo_type="space",
+              token=token,
+          )
+          print("✅ Uploaded outputs/ to Hugging Face Space")
+          PY
+
 
       - name: Notify on failure
         if: failure()

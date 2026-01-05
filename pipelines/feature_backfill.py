@@ -42,7 +42,7 @@ def engineer_features(weather_df, price_df):
     # Temporal features (daily granularity)
     merged_df['day_of_week'] = merged_df['date'].dt.dayofweek
     merged_df['month'] = merged_df['date'].dt.month
-    merged_df['is_weekend'] = (merged_df['day_of_week'] >= 5).astype(int)
+    merged_df['is_weekend'] = (merged_df['day_of_week'] >= 5).astype('int32')
     merged_df['day_of_year'] = merged_df['date'].dt.dayofyear
 
     # Weather features
@@ -70,6 +70,11 @@ def engineer_features(weather_df, price_df):
 
     # Fill remaining NaN in lag features with forward fill
     merged_df = merged_df.ffill()
+
+    # Cast integer columns to int32 for Hopsworks compatibility
+    int_cols = ['day_of_week', 'month', 'is_weekend', 'day_of_year']
+    for col in int_cols:
+        merged_df[col] = merged_df[col].astype('int32')
 
     return merged_df
 
@@ -174,11 +179,19 @@ def main():
         version=1,
         description=f"Electricity prices for {args.location} with engineered features",
         primary_key=['date'],
-        event_time='date'
+        event_time='date',
     )
+  
+    INT32_COLS = [
+        "day_of_week",
+        "month",
+        "is_weekend",
+        "day_of_year",
+    ]
 
-    # Insert data
-    electricity_fg.insert(featured_df, overwrite=True)
+
+    # Insert data (append mode preserves existing data)
+    electricity_fg.insert(featured_df, overwrite=False)
 
     print(f"  ✅ Saved {len(featured_df)} records to feature group 'electricity_price'")
 
