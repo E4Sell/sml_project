@@ -176,12 +176,19 @@ def create_comparison_visualization(historical_df, output_path='outputs/predicte
 
     tracking_df = pd.read_csv(tracking_file)
 
+    # Normalize dates to remove timezone for consistent merging
     tracking_df['target_date'] = (
         pd.to_datetime(tracking_df['target_date'], utc=True)
         .dt.tz_localize(None)
         .dt.normalize()
     )
+    tracking_df['prediction_date'] = (
+        pd.to_datetime(tracking_df['prediction_date'], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+    )
 
+    # Get actual prices from historical data
     historical_df['date'] = (
         pd.to_datetime(historical_df['date'], utc=True)
         .dt.tz_localize(None)
@@ -212,13 +219,13 @@ def create_comparison_visualization(historical_df, output_path='outputs/predicte
 
     # ---- Export timeseries for the Space UI (growing over time) ----
     os.makedirs('outputs', exist_ok=True)
-    
+
     comparison_out = comparison_df[['target_date', 'predicted_price', 'actual_price', 'prediction_date']].copy()
-    
+
     # Make it nice/consistent for display (optional but recommended)
     comparison_out['target_date'] = pd.to_datetime(comparison_out['target_date']).dt.strftime('%Y-%m-%d')
     comparison_out['prediction_date'] = pd.to_datetime(comparison_out['prediction_date']).dt.strftime('%Y-%m-%d')
-    
+
     comparison_out.to_csv('outputs/comparison_timeseries.csv', index=False)
 
 

@@ -73,7 +73,8 @@ class HopsworksStorage:
                 )
 
             print("Connecting to Hopsworks...")
-            self._project = self._hopsworks.login()
+            # Connect to electricity_price project explicitly
+            self._project = self._hopsworks.login(project="electricity_price")
             self._fs = self._project.get_feature_store()
             print(f"✅ Connected to Hopsworks project: {self._project.name}")
 
