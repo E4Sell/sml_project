@@ -14,26 +14,55 @@ An end-to-end ML system for predicting Swedish electricity prices in the Stockho
 
 ```mermaid
 graph LR
-    A1[OpenMeteo API] --> B1[Feature Backfill]
-    A2[elprisetjustnu.se API] --> B1
-    B1 --> B2[Feature Engineering]
-    B2 --> C1[(Hopsworks<br/>Feature Store)]
-    C1 --> D1[Training Pipeline]
-    D1 --> E1[(Model Registry)]
-    E1 --> F1[Inference Pipeline]
+    subgraph APIs["Data Sources"]
+        A1[OpenMeteo<br/>API]
+        A2[elprisetjustnu.se<br/>API]
+    end
+
+    subgraph Historical["Historical Backfill (One-time)"]
+        B1[Feature Backfill<br/>Historical Data]
+    end
+
+    subgraph Daily["Daily Pipeline (GitHub Actions 06:00 UTC)"]
+        B2[Daily Feature<br/>Pipeline]
+        F1[Batch<br/>Inference]
+    end
+
+    subgraph Hopsworks["HOPSWORKS"]
+        C1[(Feature Store<br/>electricity_price)]
+        E1[(Model Registry)]
+    end
+
+    subgraph Training["Model Training (Occasional)"]
+        D1[Training<br/>Pipeline]
+    end
+
+    subgraph Output["Output"]
+        G1[CSV + PNG<br/>Files]
+        I1[HuggingFace<br/>Gradio Space]
+    end
+
+    A1 --> B1
+    A2 --> B1
+    A1 --> B2
+    A2 --> B2
+    B1 --> C1
+    B2 --> C1
+    C1 --> D1
+    D1 --> E1
     C1 --> F1
-    F1 --> G1[Outputs:<br/>CSV + PNG]
-    G1 --> I1[HuggingFace<br/>Gradio UI]
-    H1[GitHub Actions<br/>Daily 06:00 UTC] -.-> B1
-    H1 -.-> F1
-    H1 -.-> I1
+    E1 --> F1
+    F1 --> G1
+    G1 --> I1
 
     style A1 fill:#e1f5ff
     style A2 fill:#e1f5ff
     style C1 fill:#fff4e1
     style E1 fill:#fff4e1
     style I1 fill:#e8f5e9
-    style H1 fill:#f3e5f5
+    style Historical fill:#f0f0f0
+    style Daily fill:#fff3e0
+    style Hopsworks fill:#fff4e1
 ```
 
 ---
