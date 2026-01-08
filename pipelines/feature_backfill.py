@@ -71,6 +71,11 @@ def engineer_features(weather_df, price_df):
     # Fill remaining NaN in lag features with forward fill
     merged_df = merged_df.ffill()
 
+    # Cast integer columns to int32 for Hopsworks compatibility
+    int_cols = ['day_of_week', 'month', 'is_weekend', 'day_of_year']
+    for col in int_cols:
+        merged_df[col] = merged_df[col].astype('int32')
+
     return merged_df
 
 
@@ -185,7 +190,7 @@ def main():
     ]
 
 
-    # Insert data
+    # Insert data (append mode preserves existing data)
     electricity_fg.insert(featured_df, overwrite=False)
 
     print(f"  ✅ Saved {len(featured_df)} records to feature group 'electricity_price'")

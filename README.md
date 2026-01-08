@@ -1,188 +1,184 @@
 # ⚡ Electricity Price Predictor
 
-ML system for predicting Swedish electricity prices (Stockholm/SE3) using weather data and XGBoost.
+An end-to-end ML system for predicting Swedish electricity prices in the Stockholm region (SE3). Combines weather data with historical electricity prices to generate 7-day forecasts, tracks prediction accuracy, and updates automatically via GitHub Actions.
 
-## 🎯 Features
+**Educational project for Scalable Machine Learning course (ID2223) at KTH Royal Institute of Technology.**
 
-- **Unified Pipelines**: One codebase for local testing and production (Hopsworks)
-- **Mode Switching**: `--mode local` or `--mode production`
-- **7-Day Forecasts**: Predict prices a week ahead
-- **Performance Tracking**: Compare predictions vs actuals over time
-- **Auto-Detection**: Detects mode from `HOPSWORKS_API_KEY` environment variable
+**Authors:** Max Dougly, Erik Forsell
 
-## 📁 Structure
+**Live Demo:** [HuggingFace Space](https://huggingface.co/spaces/eforse01/Electricity_price_predictor)
 
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+graph LR
+    subgraph APIs["Data Sources"]
+        A1[OpenMeteo<br/>API]
+        A2[elprisetjustnu.se<br/>API]
+    end
+
+    subgraph Historical["Historical Backfill (One-time)"]
+        B1[Feature Backfill<br/>Historical Data]
+    end
+
+    subgraph Daily["Daily Pipeline (GitHub Actions 06:00 UTC)"]
+        B2[Daily Feature<br/>Pipeline]
+        F1[Batch<br/>Inference]
+    end
+
+    subgraph Hopsworks["HOPSWORKS"]
+        C1[(Feature Store<br/>electricity_price)]
+        E1[(Model Registry)]
+    end
+
+    subgraph Training["Model Training (Occasional)"]
+        D1[Training<br/>Pipeline]
+    end
+
+    subgraph Output["Output"]
+        G1[CSV + PNG<br/>Files]
+        I1[HuggingFace<br/>Gradio Space]
+    end
+
+    A1 --> B1
+    A2 --> B1
+    A1 --> B2
+    A2 --> B2
+    B1 --> C1
+    B2 --> C1
+    C1 --> D1
+    D1 --> E1
+    C1 --> F1
+    E1 --> F1
+    F1 --> G1
+    G1 --> I1
+
+    style A1 fill:#e1f5ff
+    style A2 fill:#e1f5ff
+    style C1 fill:#fff4e1
+    style E1 fill:#fff4e1
+    style I1 fill:#e8f5e9
+    style Historical fill:#f0f0f0
+    style Daily fill:#fff3e0
+    style Hopsworks fill:#fff4e1
 ```
-├── pipelines/           # Main pipeline scripts (3 files)
-│   ├── feature_backfill.py    # Collect data
-│   ├── training_pipeline.py   # Train model
-│   └── inference_pipeline.py  # Generate forecasts
-│
-├── functions/           # Utilities (4 files)
-│   ├── storage_factory.py     # Mode switching logic
-│   ├── local_storage.py       # Local Parquet storage
-│   ├── util.py                # Data collection (APIs)
-│   └── electricity_data_retrieval.py
-│
-├── tests/               # Tests
-│   └── test_data_sources.py
-│
-├── data/                # Data & models
-├── outputs/             # Generated forecasts
-├── docs/                # Documentation
-└── requirements.txt
-```
+
+---
+
+## 🔗 Important Links
+
+| Resource | URL |
+|----------|-----|
+| **Live App** | [HuggingFace Space](https://huggingface.co/spaces/eforse01/Electricity_price_predictor) |
+| **Feature Store** | [Hopsworks Project](https://c.app.hopsworks.ai/p/1333397/view) |
+| **Weather API** | [OpenMeteo](https://open-meteo.com/) |
+| **Price API** | [elprisetjustnu.se](https://www.elprisetjustnu.se/api/v1/prices/) |
+
+---
+
+## 🧩 Components
+
+### Data Sources
+- **OpenMeteo API** - Historical & forecast weather data (temperature, wind, precipitation, solar radiation)
+- **elprisetjustnu.se API** - Swedish electricity spot prices for SE3 region, updated daily at 13:00 CET
+
+### Feature Pipeline (`pipelines/feature_backfill.py`)
+Collects weather and price data, engineers 22 features including temporal patterns, lag features (1d, 7d), and rolling statistics. Saves to Hopsworks Feature Store or local Parquet files.
+
+### Hopsworks Feature Store
+Cloud-based feature store storing engineered features in `electricity_price` feature group (version 1). Project ID: 1333397.
+
+### Training Pipeline (`pipelines/training_pipeline.py`)
+Trains XGBoost regression model on historical features. Model achieves R² ~0.94 on test data.
+
+### Inference Pipeline (`pipelines/inference_pipeline.py`)
+Generates 7-day price forecasts, compares predictions with actual prices, exports CSV and PNG visualizations.
+
+### Storage Factory (`functions/storage_factory.py`)
+Unified interface supporting both local Parquet storage and Hopsworks Feature Store with the same API.
+
+### HuggingFace Space
+Interactive Gradio web UI displaying forecast charts and prediction accuracy tracking. Auto-updates daily.
+
+---
+
+## ⚙️ Automated Jobs & Routines
+
+| Task | Schedule | Description |
+|------|----------|-------------|
+| **Feature Backfill** | Daily 06:00 UTC | Collects data from 9 days ago to 2 days ago, appends to Feature Store |
+| **Inference** | Daily 06:00 UTC | Generates 7-day forecast, creates comparison charts |
+| **Commit Outputs** | Daily 06:05 UTC | Commits CSV/PNG files to repository |
+| **Upload to HuggingFace** | Daily 06:10 UTC | Syncs outputs folder to Space, Gradio auto-refreshes |
+
+**Workflow:** `.github/workflows/electricity-price-daily.yml`
+
+**Manual Trigger:** Available in GitHub Actions UI for immediate testing
+
+---
 
 ## 🚀 Quick Start
 
-### 1. Install
+### Installation
 
 ```bash
+git clone https://github.com/maxdougly/sml_project.git
+cd sml_project
 pip install -r requirements.txt
 ```
 
-### 2. Test APIs
+### Local Mode (No Cloud Setup)
 
+**1. Collect data:**
 ```bash
-python tests/test_data_sources.py
+python pipelines/feature_backfill.py --mode local --start-date 2024-11-01
 ```
 
-### 3. Run Pipeline (Local Mode)
-
+**2. Train model:**
 ```bash
-# Collect data (last 30 days)
-python pipelines/feature_backfill.py --mode local --start-date 2024-12-01
-
-# Train model
 python pipelines/training_pipeline.py --mode local
+```
 
-# Generate 7-day forecast
+**3. Generate forecast:**
+```bash
 python pipelines/inference_pipeline.py --mode local --days 7
 ```
 
-**Output:**
-- `outputs/forecast_YYYYMMDD.png` - 7-day forecast chart
-- `outputs/forecast_YYYYMMDD.csv` - Prediction data
-- `outputs/predicted_vs_actual_YYYYMMDD.png` - Performance tracking (after actuals available)
+**Outputs:** `outputs/forecast_*.csv`, `outputs/forecast_*.png`, `outputs/comparison_timeseries.csv`
 
-### 4. Production Mode (Optional)
+### Production Mode (Hopsworks)
 
+Set API key and run:
 ```bash
 export HOPSWORKS_API_KEY='your-key'
-python pipelines/feature_backfill.py --mode production --start-date 2020-01-01
+python pipelines/feature_backfill.py --mode production --start-date 2023-01-01
 python pipelines/training_pipeline.py --mode production
 python pipelines/inference_pipeline.py --mode production --days 7
 ```
 
-## 📊 Visualizations
+**Mode auto-detection:** If `HOPSWORKS_API_KEY` is set, defaults to production; otherwise local.
 
-### 1. Forecast Chart
-Shows next 7 days of predicted prices:
-- Clean visualization (no historical clutter)
-- Price values on each point
-- Updated daily
-
-### 2. Comparison Chart
-Tracks predicted vs actual prices over time:
-- **Red line:** Predicted prices
-- **Blue line:** Actual prices
-- **Metrics:** MAE, RMSE
-- **Grows daily** as you add more data
-
-## 🔄 Daily Workflow
+### Test APIs
 
 ```bash
-# Collect yesterday's data
-python pipelines/feature_backfill.py --mode local \
-  --start-date $(date -v-1d +%Y-%m-%d) \
-  --end-date $(date -v-1d +%Y-%m-%d)
-
-# Generate forecast
-python pipelines/inference_pipeline.py --mode local --days 7
-```
-
-**Or automate with GitHub Actions** - see `.github/workflows/`
-
-## 📈 Model Performance
-
-Typical results with 30 days of training data:
-- **R²:** ~0.93 (excellent)
-- **RMSE:** ~0.12 SEK/kWh
-- **MAE:** ~0.08 SEK/kWh
-
-## 🔧 Mode Selection
-
-### Local Mode (`--mode local`)
-- ✅ No cloud setup needed
-- ✅ Fast testing
-- ✅ Stores in Parquet files (`data/processed/`)
-- ✅ Models saved to `data/models/`
-
-### Production Mode (`--mode production`)
-- Requires Hopsworks account + API key
-- Cloud Feature Store & Model Registry
-- Scalable, production-ready
-
-### Auto-Detection
-If you don't specify `--mode`, it auto-detects:
-- `HOPSWORKS_API_KEY` set → production mode
-- Otherwise → local mode
-
-## 🧪 Testing
-
-```bash
-# Test APIs
 python tests/test_data_sources.py
-
-# Quick test (3 days)
-python pipelines/feature_backfill.py --mode local --start-date 2024-12-26
-python pipelines/training_pipeline.py --mode local
-python pipelines/inference_pipeline.py --mode local --days 3
 ```
-
-## 🔍 Troubleshooting
-
-### Import Errors
-**Error:** `ModuleNotFoundError: No module named 'functions'`
-
-**Fix:** Run from project root:
-```bash
-cd ~/electricity-price-predictor
-python pipelines/training_pipeline.py --mode local
-```
-
-### API Errors
-- **OpenMeteo timeout:** Rate limit (10k requests/day), wait 1 min
-- **elprisetjustnu.se:** Updates 13:00 CET daily
-
-### Model Errors
-- **"Model not found":** Train first with `training_pipeline.py`
-- **Low performance (R² < 0.7):** Need more historical data
-
-### Hopsworks Errors
-- **"Invalid API key":** Set `HOPSWORKS_API_KEY` environment variable
-- **"Feature Group not found":** Run `feature_backfill.py` first
-
-## 📖 Documentation
-
-- **README.md** (this file) - Quick start
-- **docs/UNIFIED_APPROACH.md** - Architecture details
-- **docs/VISUALIZATION_GUIDE.md** - Chart explanations
-
-## 📊 Data Sources
-
-- **Weather:** [OpenMeteo API](https://open-meteo.com/) (free, no key)
-- **Electricity Prices:** [elprisetjustnu.se](https://www.elprisetjustnu.se/) (free)
-- **Feature Store:** [Hopsworks](https://www.hopsworks.ai/) (optional, free tier)
-
-## 🤝 About
-
-Educational project for MLOps course (ID2223) at KTH.
-
-**Region:** SE3 (Stockholm, Sweden)
-**Model:** XGBoost Regression
-**Forecast Horizon:** 7 days ahead
 
 ---
 
-**Last Updated:** December 2024
+## 📁 Repository Structure
+
+```
+├── pipelines/              # Feature backfill, training, inference
+├── functions/              # Utilities (storage, data retrieval)
+├── tests/                  # API tests
+├── data/                   # Local storage (Parquet, models)
+├── outputs/                # Forecasts and charts
+└── .github/workflows/      # Daily automation
+```
+
+---
+
+**Last Updated:** January 2026
