@@ -438,8 +438,15 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
     forecast_df['price_rolling_mean_7d'] = last_price
     forecast_df['price_rolling_std_7d'] = 0.0
 
-    # Ensure forecast_df has all the same columns as historical_df (in same order)
+    # Ensure both dataframes have all required features
     feature_cols = config['feature_names']
+
+    # Add missing columns to historical_df if needed
+    for col in feature_cols:
+        if col not in historical_df.columns:
+            historical_df[col] = 0.0
+
+    # Add missing columns to forecast_df
     for col in feature_cols:
         if col not in forecast_df.columns:
             # Add missing columns with 0 or mean from historical data
@@ -448,9 +455,10 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
             else:
                 forecast_df[col] = 0.0
 
-    # Reorder forecast_df columns to match historical_df
-    forecast_df = forecast_df[['date'] + feature_cols]
-    historical_df = historical_df[['date'] + feature_cols]
+    # Reorder both dataframes to have matching column structure
+    col_order = ['date'] + feature_cols
+    forecast_df = forecast_df[col_order]
+    historical_df = historical_df[col_order]
 
     # Combine historical and forecast data
     combined_df = pd.concat([historical_df, forecast_df], ignore_index=True)
