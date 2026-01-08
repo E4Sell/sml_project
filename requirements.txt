@@ -15,6 +15,7 @@ retry-requests
 # Machine learning
 scikit-learn>=1.4.0
 xgboost>=2.0.0
+tensorflow>=2.15.0  # For LSTM model
 
 # Data collection
 openmeteo-requests>=1.0.0

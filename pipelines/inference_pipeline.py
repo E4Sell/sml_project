@@ -6,9 +6,13 @@ Works in both local and production modes:
   --mode local       : Load model from local files
   --mode production  : Load from Hopsworks Model Registry
 
+Model types:
+  --model-type xgboost : Use XGBoost model (default)
+  --model-type lstm    : Use LSTM model
+
 Usage:
-    python pipelines/inference_pipeline.py --mode local --days 7
-    python pipelines/inference_pipeline.py --mode production --days 10
+    python pipelines/inference_pipeline.py --mode local --days 7 --model-type xgboost
+    python pipelines/inference_pipeline.py --mode production --days 7 --model-type lstm
 """
 
 import sys
@@ -23,8 +27,10 @@ from datetime import datetime, timedelta
 import xgboost as xgb
 import json
 import os
+import pickle
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from sklearn.preprocessing import MinMaxScaler
 from functions.util import get_weather_forecast
 from functions.storage_factory import get_storage, detect_mode
 
@@ -67,6 +73,72 @@ def load_model_hopsworks(storage):
 
     print(f"  ✅ Model loaded from Hopsworks: {model_name}")
     return xgb_model, feature_names
+
+
+def load_lstm_model_local(experiment_name='default'):
+    """Load LSTM model from local filesystem"""
+    model_dir = f"data/models/electricity_price_lstm_{experiment_name}"
+
+    if not os.path.exists(model_dir):
+        raise FileNotFoundError(
+            f"LSTM model not found: {model_dir}\n"
+            f"Train a model first: python pipelines/training_pipeline.py --mode local --model-type lstm"
+        )
+
+    # Import TensorFlow
+    try:
+        from tensorflow import keras
+    except ImportError:
+        raise ImportError("TensorFlow not installed. Install with: pip install tensorflow")
+
+    # Load Keras model
+    model = keras.models.load_model(os.path.join(model_dir, "lstm_model.keras"))
+
+    # Load scaler
+    with open(os.path.join(model_dir, "scaler.pkl"), 'rb') as f:
+        scaler = pickle.load(f)
+
+    # Load config
+    with open(os.path.join(model_dir, "config.json"), 'r') as f:
+        config = json.load(f)
+
+    print(f"  ✅ LSTM model loaded from: {model_dir}")
+    print(f"     Lookback: {config['lookback']} days, Features: {config['n_features']}")
+
+    return model, scaler, config
+
+
+def load_lstm_model_hopsworks(storage):
+    """Load LSTM model from Hopsworks Model Registry"""
+    mr = storage.get_model_registry()
+
+    model_name = "electricity_price_lstm"
+    model_meta = mr.get_model(model_name, version=1)
+
+    # Download model files
+    model_dir = model_meta.download()
+
+    # Import TensorFlow
+    try:
+        from tensorflow import keras
+    except ImportError:
+        raise ImportError("TensorFlow not installed. Install with: pip install tensorflow")
+
+    # Load Keras model
+    model = keras.models.load_model(os.path.join(model_dir, "lstm_model.keras"))
+
+    # Load scaler
+    with open(os.path.join(model_dir, "scaler.pkl"), 'rb') as f:
+        scaler = pickle.load(f)
+
+    # Load config
+    with open(os.path.join(model_dir, "config.json"), 'r') as f:
+        config = json.load(f)
+
+    print(f"  ✅ LSTM model loaded from Hopsworks: {model_name}")
+    print(f"     Lookback: {config['lookback']} days, Features: {config['n_features']}")
+
+    return model, scaler, config
 
 
 def prepare_forecast_features(weather_forecast_df, historical_df, feature_names):
@@ -309,6 +381,113 @@ def save_predictions_for_tracking(forecast_df, prediction_date):
     print(f"  ✅ Predictions saved to tracking file: {tracking_file}")
 
 
+def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecast_df):
+    """
+    Generate predictions using LSTM model
+
+    Args:
+        lstm_model: Trained Keras LSTM model
+        scaler: MinMaxScaler used during training
+        config: Model configuration dict
+        historical_df: Historical feature data
+        weather_forecast_df: Future weather forecast
+
+    Returns:
+        DataFrame with predictions
+    """
+    lookback = config['lookback']
+    feature_names = config.get('feature_names', historical_df.columns.tolist())
+
+    # Ensure we have the date column
+    if 'date' not in historical_df.columns:
+        raise ValueError("Historical data must have 'date' column")
+
+    # Sort historical data by date
+    historical_df = historical_df.sort_values('date').reset_index(drop=True)
+
+    # Engineer features for forecast period
+    forecast_df = weather_forecast_df.copy()
+    forecast_df['date'] = pd.to_datetime(forecast_df['date'])
+
+    # Add temporal features
+    forecast_df['day_of_week'] = forecast_df['date'].dt.dayofweek
+    forecast_df['month'] = forecast_df['date'].dt.month
+    forecast_df['is_weekend'] = (forecast_df['day_of_week'] >= 5).astype('int32')
+    forecast_df['day_of_year'] = forecast_df['date'].dt.dayofyear
+
+    # Weather features
+    forecast_df['temp_squared'] = forecast_df['temperature_2m_mean'] ** 2
+    forecast_df['wind_temp_interaction'] = (
+        forecast_df['wind_speed_10m_max'] * forecast_df['temperature_2m_mean']
+    )
+
+    # For LSTM, we need price-related features from historical data
+    # Use last known values as placeholders (will be updated iteratively)
+    last_price = historical_df['price_sek_kwh_mean'].iloc[-1]
+    forecast_df['price_sek_kwh_mean'] = last_price  # Placeholder
+    forecast_df['price_lag_1d'] = last_price
+    forecast_df['price_lag_7d'] = last_price
+    forecast_df['price_rolling_mean_7d'] = last_price
+    forecast_df['price_rolling_std_7d'] = 0.0
+
+    # Combine historical and forecast data
+    combined_df = pd.concat([historical_df, forecast_df], ignore_index=True)
+    combined_df = combined_df.sort_values('date').reset_index(drop=True)
+
+    # Extract features (exclude date)
+    feature_cols = [col for col in combined_df.columns if col != 'date']
+    data = combined_df[feature_cols].values
+
+    # Scale data
+    data_scaled = scaler.transform(data)
+
+    # Get index where forecast starts
+    hist_len = len(historical_df)
+
+    # Generate predictions for each forecast day
+    predictions = []
+
+    for i in range(len(forecast_df)):
+        # Get sequence ending at current forecast day
+        end_idx = hist_len + i
+        start_idx = end_idx - lookback
+
+        if start_idx < 0:
+            print(f"  ⚠️  Warning: Not enough historical data for full lookback window")
+            start_idx = 0
+
+        # Extract sequence
+        sequence = data_scaled[start_idx:end_idx, :]
+
+        # Pad if needed
+        if len(sequence) < lookback:
+            padding = np.zeros((lookback - len(sequence), sequence.shape[1]))
+            sequence = np.vstack([padding, sequence])
+
+        # Reshape for LSTM: (1, lookback, features)
+        sequence = sequence.reshape(1, lookback, -1)
+
+        # Predict
+        pred_scaled = lstm_model.predict(sequence, verbose=0)[0][0]
+
+        # Denormalize prediction
+        dummy = np.zeros((1, data_scaled.shape[1]))
+        dummy[0, 0] = pred_scaled  # Assuming target is first feature
+        pred_denorm = scaler.inverse_transform(dummy)[0, 0]
+
+        predictions.append(pred_denorm)
+
+        # Update the scaled data with this prediction for next iteration
+        if i < len(forecast_df) - 1:
+            data_scaled[end_idx, 0] = pred_scaled
+
+    # Create forecast DataFrame
+    result_df = forecast_df[['date']].copy()
+    result_df['predicted_price'] = predictions
+
+    return result_df
+
+
 def main():
     parser = argparse.ArgumentParser(description='Inference Pipeline')
     parser.add_argument(
@@ -331,6 +510,13 @@ def main():
         help='Experiment name (for local mode)'
     )
     parser.add_argument(
+        '--model-type',
+        type=str,
+        choices=['xgboost', 'lstm'],
+        default='xgboost',
+        help='Model type: xgboost or lstm (default: xgboost)'
+    )
+    parser.add_argument(
         '--latitude',
         type=float,
         default=59.33,
@@ -348,18 +534,31 @@ def main():
     # Auto-detect mode
     mode = args.mode if args.mode else detect_mode()
     print(f"\n{'='*70}")
-    print(f"INFERENCE PIPELINE - Mode: {mode.upper()}")
+    print(f"INFERENCE PIPELINE - Mode: {mode.upper()}, Model: {args.model_type.upper()}")
     print(f"{'='*70}")
     print(f"Forecast horizon: {args.days} days")
 
     # Step 1: Load model
-    print(f"\n[1/5] Loading model from {mode} storage...")
+    print(f"\n[1/5] Loading {args.model_type.upper()} model from {mode} storage...")
 
-    if mode == 'local':
-        model, feature_names = load_model_local(args.experiment_name)
-    else:
-        storage = get_storage(mode)
-        model, feature_names = load_model_hopsworks(storage)
+    if args.model_type == 'xgboost':
+        if mode == 'local':
+            model, feature_names = load_model_local(args.experiment_name)
+            scaler = None
+            config = None
+        else:
+            storage = get_storage(mode)
+            model, feature_names = load_model_hopsworks(storage)
+            scaler = None
+            config = None
+    else:  # lstm
+        if mode == 'local':
+            model, scaler, config = load_lstm_model_local(args.experiment_name)
+            feature_names = config.get('feature_names', [])
+        else:
+            storage = get_storage(mode)
+            model, scaler, config = load_lstm_model_hopsworks(storage)
+            feature_names = config.get('feature_names', [])
 
     # Step 2: Load historical data for lag features
     print(f"\n[2/5] Loading historical data...")
@@ -391,11 +590,17 @@ def main():
 
     # Step 4: Prepare features and predict
     print(f"\n[4/5] Generating predictions...")
-    forecast_features = prepare_forecast_features(weather_forecast, historical_df, feature_names)
-    predictions = model.predict(xgb.DMatrix(forecast_features))
 
-    forecast_df = weather_forecast[['date']].copy()
-    forecast_df['predicted_price'] = predictions
+    if args.model_type == 'xgboost':
+        # XGBoost prediction
+        forecast_features = prepare_forecast_features(weather_forecast, historical_df, feature_names)
+        predictions = model.predict(xgb.DMatrix(forecast_features))
+
+        forecast_df = weather_forecast[['date']].copy()
+        forecast_df['predicted_price'] = predictions
+    else:  # lstm
+        # LSTM prediction
+        forecast_df = predict_with_lstm(model, scaler, config, historical_df, weather_forecast)
 
     print(f"  ✅ Generated {len(forecast_df)} predictions")
     print(f"\n  📊 Forecast Summary:")

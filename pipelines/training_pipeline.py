@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """
-Training Pipeline - Train XGBoost model
+Training Pipeline - Train XGBoost or LSTM model
 
 Works in both local and production modes:
   --mode local       : Load from local Parquet, save model locally
   --mode production  : Load from Hopsworks, save to Model Registry
 
+Model types:
+  --model-type xgboost : Train XGBoost regression model (default)
+  --model-type lstm    : Train LSTM neural network model
+
 Usage:
-    python pipelines/training_pipeline.py --mode local
-    python pipelines/training_pipeline.py --mode production --experiment-name weekly_retrain
+    python pipelines/training_pipeline.py --mode local --model-type xgboost
+    python pipelines/training_pipeline.py --mode production --model-type lstm
 """
 
 import sys
@@ -21,16 +25,18 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.preprocessing import MinMaxScaler
 import xgboost as xgb
 import json
 import os
+import pickle
 from datetime import datetime
 from functions.storage_factory import get_storage, detect_mode
 
 
 def prepare_training_data(df):
     """
-    Prepare data for training
+    Prepare data for training (XGBoost)
 
     Args:
         df: DataFrame with features and target
@@ -59,7 +65,88 @@ def prepare_training_data(df):
     return X_train, X_test, y_train, y_test, feature_cols
 
 
-def train_model(X_train, y_train, X_test, y_test):
+def prepare_lstm_sequences(df, lookback=14):
+    """
+    Prepare sequences for LSTM training
+
+    Args:
+        df: DataFrame with features and target
+        lookback: Number of timesteps to look back (default: 14 days)
+
+    Returns:
+        X_train, X_test, y_train, y_test, scaler, feature_names
+    """
+    # Target variable
+    target_col = 'price_sek_kwh_mean'
+
+    # Features (exclude date)
+    feature_cols = [col for col in df.columns if col not in ['date']]
+
+    # Sort by date
+    df = df.sort_values('date').reset_index(drop=True)
+
+    # Extract features and target
+    data = df[feature_cols].copy()
+
+    # CRITICAL: Clean data before scaling
+    print(f"  Cleaning data...")
+    print(f"    NaN values before: {data.isna().sum().sum()}")
+
+    # Fill NaN values (forward fill then backward fill)
+    data = data.fillna(method='ffill').fillna(method='bfill')
+
+    # If still any NaN (shouldn't happen), fill with column mean
+    data = data.fillna(data.mean())
+
+    print(f"    NaN values after: {data.isna().sum().sum()}")
+
+    # Check for infinite values
+    data = data.replace([np.inf, -np.inf], np.nan)
+    data = data.fillna(data.mean())
+
+    # Convert to numpy
+    data = data.values
+
+    # Scale data (LSTM works better with normalized data)
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    data_scaled = scaler.fit_transform(data)
+
+    # Verify no NaN in scaled data
+    if np.isnan(data_scaled).any():
+        raise ValueError("NaN values present after scaling! Cannot train model.")
+
+    # Create sequences
+    X_sequences = []
+    y_sequences = []
+
+    target_idx = feature_cols.index(target_col)
+
+    for i in range(lookback, len(data_scaled)):
+        # X: last 'lookback' days of all features
+        X_sequences.append(data_scaled[i-lookback:i, :])
+        # y: target price for current day
+        y_sequences.append(data_scaled[i, target_idx])
+
+    X_sequences = np.array(X_sequences)
+    y_sequences = np.array(y_sequences)
+
+    # Time-based split (80/20)
+    split_idx = int(len(X_sequences) * 0.8)
+    X_train = X_sequences[:split_idx]
+    X_test = X_sequences[split_idx:]
+    y_train = y_sequences[:split_idx]
+    y_test = y_sequences[split_idx:]
+
+    print(f"  Training sequences: {len(X_train)}")
+    print(f"  Test sequences: {len(X_test)}")
+    print(f"  Sequence shape: {X_train.shape}")
+    print(f"  Lookback window: {lookback} days")
+    print(f"  Features per timestep: {len(feature_cols)}")
+
+    return X_train, X_test, y_train, y_test, scaler, feature_cols
+
+
+def train_xgboost_model(X_train, y_train, X_test, y_test):
     """
     Train XGBoost model
 
@@ -99,25 +186,174 @@ def train_model(X_train, y_train, X_test, y_test):
 
     # Metrics
     metrics = {
+        'model_type': 'xgboost',
         'train_rmse': float(np.sqrt(mean_squared_error(y_train, y_pred_train))),
         'train_mae': float(mean_absolute_error(y_train, y_pred_train)),
         'train_r2': float(r2_score(y_train, y_pred_train)),
         'test_rmse': float(np.sqrt(mean_squared_error(y_test, y_pred_test))),
         'test_mae': float(mean_absolute_error(y_test, y_pred_test)),
         'test_r2': float(r2_score(y_test, y_pred_test)),
-        'n_training_samples': float(len(X_train)),
-        'n_test_samples': float(len(X_test)),
-        'best_iteration': float(
+        'n_training_samples': int(len(X_train)),
+        'n_test_samples': int(len(X_test)),
+        'best_iteration': int(
             model.best_iteration if hasattr(model, 'best_iteration') else model.n_estimators
         ),
     }
 
+    return model, metrics
+
+
+def train_lstm_model(X_train, y_train, X_test, y_test, scaler):
+    """
+    Train LSTM model for time series forecasting
+
+    Architecture based on 2025 research for electricity price prediction:
+    - Stacked LSTM layers (2 layers, 64 units each)
+    - Dropout regularization (0.2)
+    - Recurrent dropout (0.2)
+    - Adam optimizer
+    - Early stopping
+
+    Args:
+        X_train: Training sequences (samples, timesteps, features)
+        y_train: Training targets
+        X_test: Test sequences
+        y_test: Test targets
+        scaler: MinMaxScaler for inverse transform
+
+    Returns:
+        Trained model, metrics dict
+    """
+    print("  Building LSTM architecture...")
+
+    # Import TensorFlow/Keras
+    try:
+        import tensorflow as tf
+        from tensorflow import keras
+        from tensorflow.keras import layers
+        from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+    except ImportError:
+        raise ImportError(
+            "TensorFlow not installed. Install with: pip install tensorflow"
+        )
+
+    # Set random seed for reproducibility
+    tf.random.set_seed(42)
+    np.random.seed(42)
+
+    # Build LSTM model
+    model = keras.Sequential([
+        # First LSTM layer with return sequences
+        layers.LSTM(
+            units=64,
+            return_sequences=True,
+            dropout=0.2,
+            recurrent_dropout=0.2,
+            input_shape=(X_train.shape[1], X_train.shape[2])
+        ),
+
+        # Second LSTM layer
+        layers.LSTM(
+            units=64,
+            dropout=0.2,
+            recurrent_dropout=0.2
+        ),
+
+        # Dense output layer
+        layers.Dense(units=1)
+    ])
+
+    # Compile model with gradient clipping
+    optimizer = keras.optimizers.Adam(learning_rate=0.001, clipnorm=1.0)
+    model.compile(
+        optimizer=optimizer,
+        loss='mse',
+        metrics=['mae']
+    )
+
+    print(f"  LSTM Architecture:")
+    print(f"    - Layer 1: LSTM(64 units, dropout=0.2, recurrent_dropout=0.2)")
+    print(f"    - Layer 2: LSTM(64 units, dropout=0.2, recurrent_dropout=0.2)")
+    print(f"    - Output: Dense(1 unit)")
+    print(f"    - Optimizer: Adam, Loss: MSE")
+
+    # Callbacks
+    early_stop = EarlyStopping(
+        monitor='val_loss',
+        patience=20,
+        restore_best_weights=True,
+        verbose=0
+    )
+
+    reduce_lr = ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.5,
+        patience=10,
+        min_lr=1e-6,
+        verbose=0
+    )
+
+    print("  Training LSTM model...")
+    print("  (Monitoring epoch progress...)\n")
+
+    # Train model
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_test, y_test),
+        epochs=100,
+        batch_size=32,
+        callbacks=[early_stop, reduce_lr],
+        verbose=1  # Show epoch progress
+    )
+
+    # Predictions
+    y_pred_train_scaled = model.predict(X_train, verbose=0).flatten()
+    y_pred_test_scaled = model.predict(X_test, verbose=0).flatten()
+
+    # Inverse transform predictions back to original scale
+    # Create dummy arrays with same shape as original data for inverse transform
+    n_features = X_train.shape[2]
+
+    # For training predictions
+    dummy_train = np.zeros((len(y_pred_train_scaled), n_features))
+    dummy_train[:, 0] = y_pred_train_scaled  # Assuming target is first feature after scaling
+    y_pred_train = scaler.inverse_transform(dummy_train)[:, 0]
+
+    dummy_train_actual = np.zeros((len(y_train), n_features))
+    dummy_train_actual[:, 0] = y_train
+    y_train_actual = scaler.inverse_transform(dummy_train_actual)[:, 0]
+
+    # For test predictions
+    dummy_test = np.zeros((len(y_pred_test_scaled), n_features))
+    dummy_test[:, 0] = y_pred_test_scaled
+    y_pred_test = scaler.inverse_transform(dummy_test)[:, 0]
+
+    dummy_test_actual = np.zeros((len(y_test), n_features))
+    dummy_test_actual[:, 0] = y_test
+    y_test_actual = scaler.inverse_transform(dummy_test_actual)[:, 0]
+
+    # Calculate metrics
+    metrics = {
+        'model_type': 'lstm',
+        'train_rmse': float(np.sqrt(mean_squared_error(y_train_actual, y_pred_train))),
+        'train_mae': float(mean_absolute_error(y_train_actual, y_pred_train)),
+        'train_r2': float(r2_score(y_train_actual, y_pred_train)),
+        'test_rmse': float(np.sqrt(mean_squared_error(y_test_actual, y_pred_test))),
+        'test_mae': float(mean_absolute_error(y_test_actual, y_pred_test)),
+        'test_r2': float(r2_score(y_test_actual, y_pred_test)),
+        'n_training_samples': int(len(X_train)),
+        'n_test_samples': int(len(X_test)),
+        'epochs_trained': int(len(history.history['loss'])),
+        'best_epoch': int(np.argmin(history.history['val_loss']) + 1),
+        'final_train_loss': float(history.history['loss'][-1]),
+        'final_val_loss': float(history.history['val_loss'][-1]),
+    }
 
     return model, metrics
 
 
-def save_model_local(model, feature_names, metrics, experiment_name='default'):
-    """Save model to local filesystem"""
+def save_xgboost_model_local(model, feature_names, metrics, experiment_name='default'):
+    """Save XGBoost model to local filesystem"""
     model_dir = f"data/models/electricity_price_xgboost_{experiment_name}"
     os.makedirs(model_dir, exist_ok=True)
 
@@ -136,8 +372,37 @@ def save_model_local(model, feature_names, metrics, experiment_name='default'):
     return model_dir
 
 
-def save_model_hopsworks(model, feature_names, metrics, storage, experiment_name='default'):
-    """Save model to Hopsworks Model Registry"""
+def save_lstm_model_local(model, scaler, feature_names, metrics, experiment_name='default', lookback=14):
+    """Save LSTM model to local filesystem"""
+    model_dir = f"data/models/electricity_price_lstm_{experiment_name}"
+    os.makedirs(model_dir, exist_ok=True)
+
+    # Save Keras model
+    model.save(os.path.join(model_dir, "lstm_model.keras"))
+
+    # Save scaler
+    with open(os.path.join(model_dir, "scaler.pkl"), 'wb') as f:
+        pickle.dump(scaler, f)
+
+    # Save feature names
+    with open(os.path.join(model_dir, "feature_names.json"), 'w') as f:
+        json.dump(feature_names, f)
+
+    # Save metrics and config
+    config = {
+        'lookback': lookback,
+        'n_features': len(feature_names),
+        **metrics
+    }
+    with open(os.path.join(model_dir, "config.json"), 'w') as f:
+        json.dump(config, f, indent=2)
+
+    print(f"  ✅ Model saved to: {model_dir}")
+    return model_dir
+
+
+def save_xgboost_model_hopsworks(model, feature_names, metrics, storage, experiment_name='default'):
+    """Save XGBoost model to Hopsworks Model Registry"""
     mr = storage.get_model_registry()
 
     # Create model directory
@@ -168,6 +433,55 @@ def save_model_hopsworks(model, feature_names, metrics, storage, experiment_name
             ),
         )
 
+        registered_model.save(model_dir)
+        print(f"  ✅ Model saved to Hopsworks Model Registry: {model_name}")
+
+    finally:
+        shutil.rmtree(model_dir)
+
+
+def save_lstm_model_hopsworks(model, scaler, feature_names, metrics, storage, experiment_name='default', lookback=14):
+    """Save LSTM model to Hopsworks Model Registry"""
+    mr = storage.get_model_registry()
+
+    # Create model directory
+    import tempfile
+    import shutil
+    model_dir = tempfile.mkdtemp()
+
+    try:
+        # Save Keras model
+        model.save(os.path.join(model_dir, "lstm_model.keras"))
+
+        # Save scaler
+        with open(os.path.join(model_dir, "scaler.pkl"), 'wb') as f:
+            pickle.dump(scaler, f)
+
+        # Save feature names
+        with open(os.path.join(model_dir, "feature_names.json"), 'w') as f:
+            json.dump(feature_names, f)
+
+        # Save config
+        config = {
+            'lookback': lookback,
+            'n_features': len(feature_names),
+            **metrics
+        }
+        with open(os.path.join(model_dir, "config.json"), 'w') as f:
+            json.dump(config, f, indent=2)
+
+        # Register model
+        model_name = f"electricity_price_lstm"
+        trained_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        registered_model = mr.python.create_model(
+            name=model_name,
+            metrics=metrics,
+            description=(
+                f"LSTM model for electricity price prediction - {experiment_name} "
+                f"(trained_at={trained_at}, lookback={lookback})"
+            ),
+        )
 
         registered_model.save(model_dir)
         print(f"  ✅ Model saved to Hopsworks Model Registry: {model_name}")
@@ -186,10 +500,23 @@ def main():
         help='Storage mode: local or production. Auto-detects if not specified.'
     )
     parser.add_argument(
+        '--model-type',
+        type=str,
+        choices=['xgboost', 'lstm'],
+        default='xgboost',
+        help='Model type: xgboost or lstm (default: xgboost)'
+    )
+    parser.add_argument(
         '--experiment-name',
         type=str,
         default='default',
         help='Experiment name for organizing models'
+    )
+    parser.add_argument(
+        '--lookback',
+        type=int,
+        default=14,
+        help='Lookback window for LSTM (default: 14 days)'
     )
 
     args = parser.parse_args()
@@ -197,7 +524,7 @@ def main():
     # Auto-detect mode
     mode = args.mode if args.mode else detect_mode()
     print(f"\n{'='*70}")
-    print(f"TRAINING PIPELINE - Mode: {mode.upper()}")
+    print(f"TRAINING PIPELINE - Mode: {mode.upper()}, Model: {args.model_type.upper()}")
     print(f"{'='*70}")
     print(f"Experiment: {args.experiment_name}")
 
@@ -214,13 +541,32 @@ def main():
     df = electricity_fg.read()
     print(f"  ✅ Loaded {len(df)} records")
 
+    # Hold out last 30 days for validation/test
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values('date')
+    cutoff_date = df['date'].max() - pd.Timedelta(days=30)
+    df = df[df['date'] <= cutoff_date]
+    print(f"  📅 Using data up to {cutoff_date.date()} (excluding last 30 days)")
+    print(f"  ✅ Training with {len(df)} records")
+
     # Step 2: Prepare training data
     print(f"\n[2/4] Preparing training data...")
-    X_train, X_test, y_train, y_test, feature_names = prepare_training_data(df)
+
+    if args.model_type == 'xgboost':
+        X_train, X_test, y_train, y_test, feature_names = prepare_training_data(df)
+        scaler = None
+    else:  # lstm
+        X_train, X_test, y_train, y_test, scaler, feature_names = prepare_lstm_sequences(
+            df, lookback=args.lookback
+        )
 
     # Step 3: Train model
-    print(f"\n[3/4] Training model...")
-    model, metrics = train_model(X_train, y_train, X_test, y_test)
+    print(f"\n[3/4] Training {args.model_type.upper()} model...")
+
+    if args.model_type == 'xgboost':
+        model, metrics = train_xgboost_model(X_train, y_train, X_test, y_test)
+    else:  # lstm
+        model, metrics = train_lstm_model(X_train, y_train, X_test, y_test, scaler)
 
     print(f"\n  📊 Model Performance:")
     print(f"     Train RMSE: {metrics['train_rmse']:.4f} SEK/kWh")
@@ -228,24 +574,38 @@ def main():
     print(f"     Test MAE:   {metrics['test_mae']:.4f} SEK/kWh")
     print(f"     Test R²:    {metrics['test_r2']:.4f}")
 
+    if args.model_type == 'lstm':
+        print(f"     Epochs:     {metrics['epochs_trained']} (best: {metrics['best_epoch']})")
+
     # Step 4: Save model
     print(f"\n[4/4] Saving model to {mode} storage...")
 
     if mode == 'local':
-        model_path = save_model_local(model, feature_names, metrics, args.experiment_name)
-    else:
-        save_model_hopsworks(model, feature_names, metrics, storage, args.experiment_name)
+        if args.model_type == 'xgboost':
+            model_path = save_xgboost_model_local(model, feature_names, metrics, args.experiment_name)
+        else:
+            model_path = save_lstm_model_local(
+                model, scaler, feature_names, metrics, args.experiment_name, args.lookback
+            )
+    else:  # production
+        if args.model_type == 'xgboost':
+            save_xgboost_model_hopsworks(model, feature_names, metrics, storage, args.experiment_name)
+        else:
+            save_lstm_model_hopsworks(
+                model, scaler, feature_names, metrics, storage, args.experiment_name, args.lookback
+            )
 
     print(f"\n{'='*70}")
     print(f"✅ TRAINING COMPLETE!")
     print(f"{'='*70}")
     print(f"\nNext steps:")
     if mode == 'local':
-        print(f"  - Generate forecast: python pipelines/inference_pipeline.py --mode local")
-        print(f"  - View model: ls -lh {model_path}")
+        print(f"  - Generate forecast: python pipelines/inference_pipeline.py --mode local --model-type {args.model_type}")
+        if args.model_type == 'xgboost':
+            print(f"  - View model: ls -lh {model_path}")
     else:
         print(f"  - Check Hopsworks Model Registry")
-        print(f"  - Generate forecast: python pipelines/inference_pipeline.py --mode production")
+        print(f"  - Generate forecast: python pipelines/inference_pipeline.py --mode production --model-type {args.model_type}")
 
 
 if __name__ == '__main__':

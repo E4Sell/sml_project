@@ -16,6 +16,14 @@ on:
         options:
           - local
           - production
+      model_type:
+        description: 'Model type (xgboost or lstm)'
+        required: false
+        default: 'lstm'
+        type: choice
+        options:
+          - xgboost
+          - lstm
 
 jobs:
   run-daily-pipeline:
@@ -54,9 +62,11 @@ jobs:
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
         run: |
-          echo "Generating 7-day forecast..."
+          MODEL_TYPE="${{ github.event.inputs.model_type || 'lstm' }}"
+          echo "Generating 7-day forecast using ${MODEL_TYPE} model..."
           python pipelines/inference_pipeline.py \
             --mode production \
+            --model-type ${MODEL_TYPE} \
             --days 7
 
       - name: Commit forecast outputs
