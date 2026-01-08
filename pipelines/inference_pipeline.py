@@ -468,11 +468,11 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
     forecast_df = forecast_df[col_order].copy()
     historical_df = historical_df[col_order].copy()
 
-    # Debug: Print shapes and dtypes after selection
-    print(f"  Debug: historical_df shape after selection: {historical_df.shape}")
-    print(f"  Debug: forecast_df shape after selection: {forecast_df.shape}")
-    print(f"  Debug: historical_df dtypes: {historical_df.dtypes.to_dict()}")
-    print(f"  Debug: forecast_df dtypes: {forecast_df.dtypes.to_dict()}")
+    # Normalize datetime precision to match (convert both to ns)
+    historical_df['date'] = pd.to_datetime(historical_df['date']).astype('datetime64[ns]')
+    forecast_df['date'] = pd.to_datetime(forecast_df['date']).astype('datetime64[ns]')
+
+    print(f"  ✅ Aligned dataframes: historical ({historical_df.shape[0]} rows), forecast ({forecast_df.shape[0]} rows)")
 
     # Combine historical and forecast data
     combined_df = pd.concat([historical_df, forecast_df], ignore_index=True)
