@@ -154,7 +154,11 @@ def prepare_forecast_features(weather_forecast_df, historical_df, feature_names)
         DataFrame with all required features
     """
     forecast_df = weather_forecast_df.copy()
-    forecast_df['date'] = pd.to_datetime(forecast_df['date'])
+    forecast_df['date'] = pd.to_datetime(forecast_df['date']).dt.tz_localize(None)
+
+    # Also normalize historical_df dates to remove timezone
+    historical_df = historical_df.copy()
+    historical_df['date'] = pd.to_datetime(historical_df['date']).dt.tz_localize(None)
 
     # Temporal features
     forecast_df['hour'] = forecast_df['date'].dt.hour
@@ -407,7 +411,11 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
 
     # Engineer features for forecast period
     forecast_df = weather_forecast_df.copy()
-    forecast_df['date'] = pd.to_datetime(forecast_df['date'])
+    forecast_df['date'] = pd.to_datetime(forecast_df['date']).dt.tz_localize(None)
+
+    # Also normalize historical_df dates to remove timezone
+    historical_df = historical_df.copy()
+    historical_df['date'] = pd.to_datetime(historical_df['date']).dt.tz_localize(None)
 
     # Add temporal features
     forecast_df['day_of_week'] = forecast_df['date'].dt.dayofweek
