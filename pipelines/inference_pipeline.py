@@ -438,12 +438,25 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
     forecast_df['price_rolling_mean_7d'] = last_price
     forecast_df['price_rolling_std_7d'] = 0.0
 
+    # Ensure forecast_df has all the same columns as historical_df (in same order)
+    feature_cols = config['feature_names']
+    for col in feature_cols:
+        if col not in forecast_df.columns:
+            # Add missing columns with 0 or mean from historical data
+            if col in historical_df.columns:
+                forecast_df[col] = historical_df[col].mean()
+            else:
+                forecast_df[col] = 0.0
+
+    # Reorder forecast_df columns to match historical_df
+    forecast_df = forecast_df[['date'] + feature_cols]
+    historical_df = historical_df[['date'] + feature_cols]
+
     # Combine historical and forecast data
     combined_df = pd.concat([historical_df, forecast_df], ignore_index=True)
     combined_df = combined_df.sort_values('date').reset_index(drop=True)
 
-    # Extract features (exclude date)
-    feature_cols = [col for col in combined_df.columns if col != 'date']
+    # Extract features (exclude date, already have feature_cols from config)
     data = combined_df[feature_cols].values
 
     # Scale data
@@ -451,6 +464,10 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
 
     # Get index where forecast starts
     hist_len = len(historical_df)
+
+    # Find target index in feature columns
+    target_col = 'price_sek_kwh_mean'
+    target_idx = feature_cols.index(target_col)
 
     # Generate predictions for each forecast day
     predictions = []
@@ -479,15 +496,15 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
         pred_scaled = lstm_model.predict(sequence, verbose=0)[0][0]
 
         # Denormalize prediction
-        dummy = np.zeros((1, data_scaled.shape[1]))
-        dummy[0, 0] = pred_scaled  # Assuming target is first feature
-        pred_denorm = scaler.inverse_transform(dummy)[0, 0]
+        dummy = np.zeros((1, len(feature_cols)))
+        dummy[0, target_idx] = pred_scaled
+        pred_denorm = scaler.inverse_transform(dummy)[0, target_idx]
 
         predictions.append(pred_denorm)
 
         # Update the scaled data with this prediction for next iteration
         if i < len(forecast_df) - 1:
-            data_scaled[end_idx, 0] = pred_scaled
+            data_scaled[end_idx, target_idx] = pred_scaled
 
     # Create forecast DataFrame
     result_df = forecast_df[['date']].copy()
