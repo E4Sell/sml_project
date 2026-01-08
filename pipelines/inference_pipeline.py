@@ -457,8 +457,22 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
 
     # Reorder both dataframes to have matching column structure
     col_order = ['date'] + feature_cols
-    forecast_df = forecast_df[col_order]
-    historical_df = historical_df[col_order]
+
+    # Debug: Print shapes and columns before selection
+    print(f"  Debug: historical_df shape before selection: {historical_df.shape}")
+    print(f"  Debug: forecast_df shape before selection: {forecast_df.shape}")
+    print(f"  Debug: col_order length: {len(col_order)}")
+    print(f"  Debug: Missing in historical_df: {set(col_order) - set(historical_df.columns)}")
+    print(f"  Debug: Missing in forecast_df: {set(col_order) - set(forecast_df.columns)}")
+
+    forecast_df = forecast_df[col_order].copy()
+    historical_df = historical_df[col_order].copy()
+
+    # Debug: Print shapes and dtypes after selection
+    print(f"  Debug: historical_df shape after selection: {historical_df.shape}")
+    print(f"  Debug: forecast_df shape after selection: {forecast_df.shape}")
+    print(f"  Debug: historical_df dtypes: {historical_df.dtypes.to_dict()}")
+    print(f"  Debug: forecast_df dtypes: {forecast_df.dtypes.to_dict()}")
 
     # Combine historical and forecast data
     combined_df = pd.concat([historical_df, forecast_df], ignore_index=True)
