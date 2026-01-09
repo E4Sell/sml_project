@@ -102,6 +102,17 @@ def load_lstm_model_local(experiment_name='default'):
     with open(os.path.join(model_dir, "config.json"), 'r') as f:
         config = json.load(f)
 
+    # Load feature names (order MUST match scaler training)
+    fn_path = os.path.join(model_dir, "feature_names.json")
+    if os.path.exists(fn_path):
+        with open(fn_path, "r") as f:
+            config["feature_names"] = json.load(f)
+    else:
+        # Fallback: keep existing if present, otherwise fail loudly
+        if "feature_names" not in config:
+            raise FileNotFoundError(f"Missing feature_names.json in {model_dir} (needed for LSTM inference)")
+
+
     print(f"  ✅ LSTM model loaded from: {model_dir}")
     print(f"     Lookback: {config['lookback']} days, Features: {config['n_features']}")
 
@@ -134,6 +145,15 @@ def load_lstm_model_hopsworks(storage):
     # Load config
     with open(os.path.join(model_dir, "config.json"), 'r') as f:
         config = json.load(f)
+        fn_path = os.path.join(model_dir, "feature_names.json")
+      
+    if os.path.exists(fn_path):
+        with open(fn_path, "r") as f:
+            config["feature_names"] = json.load(f)
+    else:
+        if "feature_names" not in config:
+            raise FileNotFoundError(f"Missing feature_names.json in downloaded model dir {model_dir}")
+
 
     print(f"  ✅ LSTM model loaded from Hopsworks: {model_name}")
     print(f"     Lookback: {config['lookback']} days, Features: {config['n_features']}")
