@@ -1,7 +1,6 @@
 """
-Utility functions for electricity price prediction system.
-Handles data retrieval from OpenMeteo (weather), elprisetjustnu.se (electricity prices),
-and Entsoe Transparency Platform (energy production).
+Utility functions for data retrieval: OpenMeteo weather, elprisetjustnu.se prices,
+and Entsoe energy production.
 """
 
 import requests
@@ -17,31 +16,13 @@ import os
 
 
 def setup_openmeteo_session():
-    """
-    Set up OpenMeteo session with caching and retry logic.
-
-    Returns:
-        openmeteo_requests.Client: Configured OpenMeteo client
-    """
     cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
     retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
     return openmeteo_requests.Client(session=retry_session)
 
 
 def get_historical_weather(start_date, end_date, latitude=59.33, longitude=18.07):
-    """
-    Fetch historical weather data from OpenMeteo for Stockholm (SE3 region).
-
-    Args:
-        start_date (str): Start date in format 'YYYY-MM-DD'
-        end_date (str): End date in format 'YYYY-MM-DD'
-        latitude (float): Latitude (default: Stockholm)
-        longitude (float): Longitude (default: Stockholm)
-
-    Returns:
-        pd.DataFrame: Weather data with columns: date, temperature_2m, precipitation,
-                      wind_speed_10m, wind_direction_10m, cloud_cover, shortwave_radiation
-    """
+    """Fetch historical weather data from OpenMeteo for Stockholm (SE3)."""
     client = setup_openmeteo_session()
 
     url = "https://archive-api.open-meteo.com/v1/archive"
@@ -94,17 +75,7 @@ def get_historical_weather(start_date, end_date, latitude=59.33, longitude=18.07
 
 
 def get_weather_forecast(days_ahead=10, latitude=59.33, longitude=18.07):
-    """
-    Fetch weather forecast from OpenMeteo for Stockholm.
-
-    Args:
-        days_ahead (int): Number of days to forecast (default: 10)
-        latitude (float): Latitude (default: Stockholm)
-        longitude (float): Longitude (default: Stockholm)
-
-    Returns:
-        pd.DataFrame: Weather forecast data
-    """
+    """Fetch weather forecast from OpenMeteo for Stockholm."""
     client = setup_openmeteo_session()
 
     url = "https://api.open-meteo.com/v1/forecast"
@@ -156,20 +127,9 @@ def get_weather_forecast(days_ahead=10, latitude=59.33, longitude=18.07):
 
 
 def get_electricity_prices(start_date, end_date, region="SE3"):
-    """
-    Fetch historical electricity prices from elprisetjustnu.se API for Swedish region.
-
-    Args:
-        start_date (str): Start date in format 'YYYY-MM-DD'
-        end_date (str): End date in format 'YYYY-MM-DD'
-        region (str): Swedish electricity region (default: SE3 for Stockholm)
-
-    Returns:
-        pd.DataFrame: Electricity price data with columns: date, price_sek_kwh
-    """
+    """Fetch electricity prices from elprisetjustnu.se API, aggregated to daily mean/min/max/std."""
     prices = []
 
-    # Convert dates to datetime
     start = datetime.strptime(start_date, '%Y-%m-%d')
     end = datetime.strptime(end_date, '%Y-%m-%d')
 
@@ -196,9 +156,7 @@ def get_electricity_prices(start_date, end_date, region="SE3"):
 
     if prices:
         df = pd.DataFrame(prices)
-        # Ensure timestamp is datetime type (handle timezone-aware datetimes)
         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-        # Aggregate hourly prices to daily average
         df['date'] = df['timestamp'].dt.date
         df_daily = df.groupby('date')['price_sek_kwh'].agg(['mean', 'min', 'max', 'std']).reset_index()
         df_daily.columns = ['date', 'price_sek_kwh_mean', 'price_sek_kwh_min', 'price_sek_kwh_max', 'price_sek_kwh_std']
@@ -208,60 +166,19 @@ def get_electricity_prices(start_date, end_date, region="SE3"):
 
 
 def get_entsoe_generation_data(start_date, end_date, api_key):
-    """
-    Fetch energy generation data from Entsoe Transparency Platform.
-
-    Note: This is a simplified version. Full implementation requires:
-    - Proper Entsoe API authentication
-    - Handling of different fuel types
-    - Proper aggregation of hourly data to daily
-
-    Args:
-        start_date (str): Start date in format 'YYYYMMDD'
-        end_date (str): End date in format 'YYYYMMDD'
-        api_key (str): Entsoe API key
-
-    Returns:
-        pd.DataFrame: Energy generation data
-    """
-    # Note: Entsoe API requires specific datetime format and document types
-    # This is a placeholder for the actual implementation
-
-    # For MVP, return dummy data or skip this feature
-    # Full implementation would look like:
-    # url = "https://web-api.tp.entsoe.eu/api"
-    # params = {
-    #     'securityToken': api_key,
-    #     'documentType': 'A75',  # Actual generation per type
-    #     'processType': 'A16',
-    #     'outBiddingZone_Domain': '10YSE-1--------K',  # SE
-    #     'periodStart': start_date,
-    #     'periodEnd': end_date
-    # }
-
+    """Fetch energy generation data from Entsoe Transparency Platform (placeholder implementation)."""
     print("Note: Entsoe integration requires API key and additional configuration.")
     print("For now, returning empty DataFrame. Implement full Entsoe integration as needed.")
-
     return pd.DataFrame()
 
 
 def plot_electricity_price_forecast(historical_df, forecast_df, city="Stockholm"):
-    """
-    Plot electricity price predictions vs historical data.
-
-    Args:
-        historical_df (pd.DataFrame): Historical data with 'date' and 'price_sek_kwh_mean'
-        forecast_df (pd.DataFrame): Forecast data with 'date' and 'predicted_price'
-        city (str): City name for title
-    """
     plt.figure(figsize=(14, 6))
 
-    # Plot historical prices
     if not historical_df.empty:
         plt.plot(historical_df['date'], historical_df['price_sek_kwh_mean'],
                 label='Historical Price', color='blue', linewidth=2)
 
-    # Plot forecast
     if not forecast_df.empty:
         plt.plot(forecast_df['date'], forecast_df['predicted_price'],
                 label='Predicted Price', color='orange', linewidth=2, linestyle='--')
@@ -276,9 +193,7 @@ def plot_electricity_price_forecast(historical_df, forecast_df, city="Stockholm"
     plt.show()
 
 
-# Hopsworks utility functions
 def delete_feature_groups(fs, feature_group_names):
-    """Delete specified feature groups from Hopsworks."""
     for fg_name in feature_group_names:
         try:
             fg = fs.get_feature_group(fg_name)
@@ -289,7 +204,6 @@ def delete_feature_groups(fs, feature_group_names):
 
 
 def delete_feature_views(fs, feature_view_names):
-    """Delete specified feature views from Hopsworks."""
     for fv_name in feature_view_names:
         try:
             fv = fs.get_feature_view(fv_name)
@@ -300,15 +214,9 @@ def delete_feature_views(fs, feature_view_names):
 
 
 def purge_project(project):
-    """
-    Clean up all Hopsworks artifacts (use with caution!).
-
-    Args:
-        project: Hopsworks project object
-    """
+    """Clean up all Hopsworks artifacts (use with caution!)."""
     fs = project.get_feature_store()
 
-    # Delete all feature views
     try:
         for fv in fs.get_feature_views():
             try:
@@ -319,7 +227,6 @@ def purge_project(project):
     except Exception as e:
         print(f"Error deleting feature views: {e}")
 
-    # Delete all feature groups
     try:
         for fg in fs.get_feature_groups():
             try:
@@ -332,13 +239,4 @@ def purge_project(project):
 
 
 def check_file_path(file_path):
-    """
-    Check if a file exists at the specified path.
-
-    Args:
-        file_path (str): Path to file
-
-    Returns:
-        bool: True if file exists, False otherwise
-    """
     return os.path.exists(file_path)

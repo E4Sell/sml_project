@@ -35,15 +35,7 @@ from functions.storage_factory import get_storage, detect_mode
 
 
 def prepare_training_data(df):
-    """
-    Prepare data for training (XGBoost)
-
-    Args:
-        df: DataFrame with features and target
-
-    Returns:
-        X_train, X_test, y_train, y_test, feature_names
-    """
+    """Prepare XGBoost training data with time-based split"""
     # Target variable
     target_col = 'price_sek_kwh_mean'
 
@@ -66,16 +58,7 @@ def prepare_training_data(df):
 
 
 def prepare_lstm_sequences(df, lookback=14):
-    """
-    Prepare sequences for LSTM training
-
-    Args:
-        df: DataFrame with features and target
-        lookback: Number of timesteps to look back (default: 14 days)
-
-    Returns:
-        X_train, X_test, y_train, y_test, scaler, feature_names
-    """
+    """Prepare LSTM sequences with normalization and lookback window"""
     # Target variable
     target_col = 'price_sek_kwh_mean'
 
@@ -88,19 +71,15 @@ def prepare_lstm_sequences(df, lookback=14):
     # Extract features and target
     data = df[feature_cols].copy()
 
-    # CRITICAL: Clean data before scaling
+    # Clean data before scaling
     print(f"  Cleaning data...")
     print(f"    NaN values before: {data.isna().sum().sum()}")
 
-    # Fill NaN values (forward fill then backward fill)
     data = data.fillna(method='ffill').fillna(method='bfill')
-
-    # If still any NaN (shouldn't happen), fill with column mean
     data = data.fillna(data.mean())
 
     print(f"    NaN values after: {data.isna().sum().sum()}")
 
-    # Check for infinite values
     data = data.replace([np.inf, -np.inf], np.nan)
     data = data.fillna(data.mean())
 
@@ -147,16 +126,7 @@ def prepare_lstm_sequences(df, lookback=14):
 
 
 def train_xgboost_model(X_train, y_train, X_test, y_test):
-    """
-    Train XGBoost model
-
-    Args:
-        X_train, y_train: Training data
-        X_test, y_test: Test data
-
-    Returns:
-        Trained model, metrics dict
-    """
+    """Train XGBoost regression model with early stopping"""
     print("  Training XGBoost model...")
 
     model = xgb.XGBRegressor(
@@ -204,26 +174,7 @@ def train_xgboost_model(X_train, y_train, X_test, y_test):
 
 
 def train_lstm_model(X_train, y_train, X_test, y_test, scaler):
-    """
-    Train LSTM model for time series forecasting
-
-    Architecture based on 2025 research for electricity price prediction:
-    - Stacked LSTM layers (2 layers, 64 units each)
-    - Dropout regularization (0.2)
-    - Recurrent dropout (0.2)
-    - Adam optimizer
-    - Early stopping
-
-    Args:
-        X_train: Training sequences (samples, timesteps, features)
-        y_train: Training targets
-        X_test: Test sequences
-        y_test: Test targets
-        scaler: MinMaxScaler for inverse transform
-
-    Returns:
-        Trained model, metrics dict
-    """
+    """Train stacked LSTM model with dropout and early stopping"""
     print("  Building LSTM architecture...")
 
     # Import TensorFlow/Keras
@@ -353,42 +304,33 @@ def train_lstm_model(X_train, y_train, X_test, y_test, scaler):
 
 
 def save_xgboost_model_local(model, feature_names, metrics, experiment_name='default'):
-    """Save XGBoost model to local filesystem"""
     model_dir = f"data/models/electricity_price_xgboost_{experiment_name}"
     os.makedirs(model_dir, exist_ok=True)
 
-    # Save model
     model.save_model(os.path.join(model_dir, "model.json"))
 
-    # Save feature names
     with open(os.path.join(model_dir, "feature_names.json"), 'w') as f:
         json.dump(feature_names, f)
 
-    # Save metrics
     with open(os.path.join(model_dir, "metrics.json"), 'w') as f:
         json.dump(metrics, f, indent=2)
 
-    print(f"  ✅ Model saved to: {model_dir}")
+    print(f"  Model saved to: {model_dir}")
     return model_dir
 
 
 def save_lstm_model_local(model, scaler, feature_names, metrics, experiment_name='default', lookback=14):
-    """Save LSTM model to local filesystem"""
     model_dir = f"data/models/electricity_price_lstm_{experiment_name}"
     os.makedirs(model_dir, exist_ok=True)
 
-    # Save Keras model
     model.save(os.path.join(model_dir, "lstm_model.keras"))
 
-    # Save scaler
     with open(os.path.join(model_dir, "scaler.pkl"), 'wb') as f:
         pickle.dump(scaler, f)
 
-    # Save feature names
     with open(os.path.join(model_dir, "feature_names.json"), 'w') as f:
         json.dump(feature_names, f)
 
-    # Save metrics and config
     config = {
         'lookback': lookback,
         'n_features': len(feature_names),
@@ -398,21 +340,18 @@ def save_lstm_model_local(model, scaler, feature_names, metrics, experiment_name
     with open(os.path.join(model_dir, "config.json"), 'w') as f:
         json.dump(config, f, indent=2)
 
-    print(f"  ✅ Model saved to: {model_dir}")
+    print(f"  Model saved to: {model_dir}")
     return model_dir
 
 
 def save_xgboost_model_hopsworks(model, feature_names, metrics, storage, experiment_name='default'):
-    """Save XGBoost model to Hopsworks Model Registry"""
     mr = storage.get_model_registry()
 
-    # Create model directory
     import tempfile
     import shutil
     model_dir = tempfile.mkdtemp()
 
     try:
-        # Save model files
         model.save_model(os.path.join(model_dir, "model.json"))
 
         with open(os.path.join(model_dir, "feature_names.json"), 'w') as f:
@@ -421,7 +360,6 @@ def save_xgboost_model_hopsworks(model, feature_names, metrics, storage, experim
         with open(os.path.join(model_dir, "metrics.json"), 'w') as f:
             json.dump(metrics, f, indent=2)
 
-        # Register model
         model_name = f"electricity_price_xgboost"
         trained_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -435,34 +373,28 @@ def save_xgboost_model_hopsworks(model, feature_names, metrics, storage, experim
         )
 
         registered_model.save(model_dir)
-        print(f"  ✅ Model saved to Hopsworks Model Registry: {model_name}")
+        print(f"  Model saved to Hopsworks Model Registry: {model_name}")
 
     finally:
         shutil.rmtree(model_dir)
 
 
 def save_lstm_model_hopsworks(model, scaler, feature_names, metrics, storage, experiment_name='default', lookback=14):
-    """Save LSTM model to Hopsworks Model Registry"""
     mr = storage.get_model_registry()
 
-    # Create model directory
     import tempfile
     import shutil
     model_dir = tempfile.mkdtemp()
 
     try:
-        # Save Keras model
         model.save(os.path.join(model_dir, "lstm_model.keras"))
 
-        # Save scaler
         with open(os.path.join(model_dir, "scaler.pkl"), 'wb') as f:
             pickle.dump(scaler, f)
 
-        # Save feature names
         with open(os.path.join(model_dir, "feature_names.json"), 'w') as f:
             json.dump(feature_names, f)
 
-        # Save config
         config = {
             'lookback': lookback,
             'n_features': len(feature_names),
@@ -472,7 +404,6 @@ def save_lstm_model_hopsworks(model, scaler, feature_names, metrics, storage, ex
         with open(os.path.join(model_dir, "config.json"), 'w') as f:
             json.dump(config, f, indent=2)
 
-        # Register model
         model_name = f"electricity_price_lstm"
         trained_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -486,7 +417,7 @@ def save_lstm_model_hopsworks(model, scaler, feature_names, metrics, storage, ex
         )
 
         registered_model.save(model_dir)
-        print(f"  ✅ Model saved to Hopsworks Model Registry: {model_name}")
+        print(f"  Model saved to Hopsworks Model Registry: {model_name}")
 
     finally:
         shutil.rmtree(model_dir)
@@ -523,14 +454,12 @@ def main():
 
     args = parser.parse_args()
 
-    # Auto-detect mode
     mode = args.mode if args.mode else detect_mode()
     print(f"\n{'='*70}")
     print(f"TRAINING PIPELINE - Mode: {mode.upper()}, Model: {args.model_type.upper()}")
     print(f"{'='*70}")
     print(f"Experiment: {args.experiment_name}")
 
-    # Step 1: Load data from storage
     print(f"\n[1/4] Loading data from {mode} storage...")
     storage = get_storage(mode)
     fs = storage.get_feature_store()
@@ -541,36 +470,34 @@ def main():
     )
 
     df = electricity_fg.read()
-    print(f"  ✅ Loaded {len(df)} records")
+    print(f"  Loaded {len(df)} records")
 
     # Hold out last 30 days for validation/test
     df['date'] = pd.to_datetime(df['date'])
     df = df.sort_values('date')
     cutoff_date = df['date'].max() - pd.Timedelta(days=30)
     df = df[df['date'] <= cutoff_date]
-    print(f"  📅 Using data up to {cutoff_date.date()} (excluding last 30 days)")
-    print(f"  ✅ Training with {len(df)} records")
+    print(f"  Using data up to {cutoff_date.date()} (excluding last 30 days)")
+    print(f"  Training with {len(df)} records")
 
-    # Step 2: Prepare training data
     print(f"\n[2/4] Preparing training data...")
 
     if args.model_type == 'xgboost':
         X_train, X_test, y_train, y_test, feature_names = prepare_training_data(df)
         scaler = None
-    else:  # lstm
+    else:
         X_train, X_test, y_train, y_test, scaler, feature_names = prepare_lstm_sequences(
             df, lookback=args.lookback
         )
 
-    # Step 3: Train model
     print(f"\n[3/4] Training {args.model_type.upper()} model...")
 
     if args.model_type == 'xgboost':
         model, metrics = train_xgboost_model(X_train, y_train, X_test, y_test)
-    else:  # lstm
+    else:
         model, metrics = train_lstm_model(X_train, y_train, X_test, y_test, scaler)
 
-    print(f"\n  📊 Model Performance:")
+    print(f"\n  Model Performance:")
     print(f"     Train RMSE: {metrics['train_rmse']:.4f} SEK/kWh")
     print(f"     Test RMSE:  {metrics['test_rmse']:.4f} SEK/kWh")
     print(f"     Test MAE:   {metrics['test_mae']:.4f} SEK/kWh")
@@ -579,7 +506,6 @@ def main():
     if args.model_type == 'lstm':
         print(f"     Epochs:     {metrics['epochs_trained']} (best: {metrics['best_epoch']})")
 
-    # Step 4: Save model
     print(f"\n[4/4] Saving model to {mode} storage...")
 
     if mode == 'local':
@@ -598,7 +524,7 @@ def main():
             )
 
     print(f"\n{'='*70}")
-    print(f"✅ TRAINING COMPLETE!")
+    print(f"TRAINING COMPLETE!")
     print(f"{'='*70}")
     print(f"\nNext steps:")
     if mode == 'local':

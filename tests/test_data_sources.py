@@ -1,6 +1,6 @@
 """
-Test script to verify all data sources are working
-Run this before executing the main pipelines
+Test script to verify all data sources are working.
+Run this before executing the main pipelines.
 """
 
 import sys
@@ -13,13 +13,11 @@ from functions.util import get_historical_weather, get_electricity_prices
 
 
 def test_openmeteo():
-    """Test OpenMeteo weather API"""
     print("\n" + "="*60)
     print("Testing OpenMeteo API (Weather Data)")
     print("="*60)
 
     try:
-        # Test last 3 days
         end_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d')
 
@@ -27,21 +25,20 @@ def test_openmeteo():
         df = get_historical_weather(start_date, end_date, 59.33, 18.07)
 
         if df.empty:
-            print("❌ FAILED: No data returned from OpenMeteo API")
+            print("FAILED: No data returned from OpenMeteo API")
             return False
 
-        print(f"✅ SUCCESS: Retrieved {len(df)} days of weather data")
+        print(f"SUCCESS: Retrieved {len(df)} days of weather data")
         print(f"\nSample data:")
         print(df.head(3))
         return True
 
     except Exception as e:
-        print(f"❌ FAILED: {str(e)}")
+        print(f"FAILED: {str(e)}")
         return False
 
 
 def test_electricity_api():
-    """Test elprisetjustnu.se API"""
     print("\n" + "="*60)
     print("Testing elprisetjustnu.se API (Electricity Prices)")
     print("="*60)
@@ -54,10 +51,10 @@ def test_electricity_api():
         df = get_electricity_prices(start_date, end_date, region='SE3')
 
         if df.empty:
-            print("❌ FAILED: No data returned from electricity API")
+            print("FAILED: No data returned from electricity API")
             return False
 
-        print(f"✅ SUCCESS: Retrieved {len(df)} days of electricity price data")
+        print(f"SUCCESS: Retrieved {len(df)} days of electricity price data")
         print(f"\nSample data:")
         print(df.head(3))
 
@@ -68,12 +65,11 @@ def test_electricity_api():
         return True
 
     except Exception as e:
-        print(f"❌ FAILED: {str(e)}")
+        print(f"FAILED: {str(e)}")
         return False
 
 
 def test_storage():
-    """Test storage abstraction layer"""
     print("\n" + "="*60)
     print("Testing Storage Abstraction")
     print("="*60)
@@ -81,27 +77,25 @@ def test_storage():
     try:
         from functions.storage_factory import get_storage
 
-        # Test local storage
         print("Testing local storage...")
         storage_local = get_storage(mode='local')
         fs = storage_local.get_feature_store()
-        print("✅ SUCCESS: Local storage working")
+        print("SUCCESS: Local storage working")
 
-        # Test Hopsworks (if configured)
         import os
         if os.getenv('HOPSWORKS_API_KEY'):
             print("\nTesting Hopsworks storage...")
             storage_prod = get_storage(mode='production')
             fs_prod = storage_prod.get_feature_store()
-            print("✅ SUCCESS: Hopsworks storage working")
+            print("SUCCESS: Hopsworks storage working")
         else:
-            print("\n⚠️  SKIPPED: Hopsworks test (no API key set)")
+            print("\nSKIPPED: Hopsworks test (no API key set)")
             print("   Set HOPSWORKS_API_KEY to test production mode")
 
         return True
 
     except Exception as e:
-        print(f"❌ FAILED: {str(e)}")
+        print(f"FAILED: {str(e)}")
         return False
 
 
@@ -121,16 +115,16 @@ def main():
     print("="*60)
 
     for name, passed in results.items():
-        status = "✅ PASS" if passed else "❌ FAIL"
+        status = "PASS" if passed else "FAIL"
         padding = "." * (40 - len(name))
         print(f"{name}{padding} {status}")
 
     all_passed = all(results.values())
 
     if all_passed:
-        print("\n✅ All tests passed! You're ready to run the pipelines.")
+        print("\nAll tests passed! You're ready to run the pipelines.")
     else:
-        print("\n⚠️  Some tests failed. Fix the issues above before running pipelines.")
+        print("\nSome tests failed. Fix the issues above before running pipelines.")
 
     return 0 if all_passed else 1
 

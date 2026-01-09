@@ -21,24 +21,15 @@ from functions.storage_factory import get_storage
 
 
 def upload_lstm_model(model_dir, experiment_name='default'):
-    """
-    Upload existing LSTM model to Hopsworks Model Registry
-
-    Args:
-        model_dir: Path to local LSTM model directory
-        experiment_name: Name for the experiment
-    """
     print(f"\n{'='*70}")
     print(f"UPLOAD LSTM MODEL TO HOPSWORKS")
     print(f"{'='*70}")
     print(f"Model directory: {model_dir}")
     print(f"Experiment: {experiment_name}")
 
-    # Check if model directory exists
     if not os.path.exists(model_dir):
         raise FileNotFoundError(f"Model directory not found: {model_dir}")
 
-    # Check required files
     required_files = ['lstm_model.keras', 'scaler.pkl', 'config.json']
     for file in required_files:
         file_path = os.path.join(model_dir, file)
@@ -47,7 +38,6 @@ def upload_lstm_model(model_dir, experiment_name='default'):
 
     print(f"\n[1/3] Loading model metadata...")
 
-    # Load config
     with open(os.path.join(model_dir, 'config.json'), 'r') as f:
         config = json.load(f)
 
@@ -57,7 +47,6 @@ def upload_lstm_model(model_dir, experiment_name='default'):
     print(f"  Test R²: {config.get('test_r2', 'unknown'):.4f}")
     print(f"  Test MAE: {config.get('test_mae', 'unknown'):.4f} SEK/kWh")
 
-    # Extract metrics for Hopsworks (only numeric values allowed)
     metrics = {
         'train_rmse': float(config.get('train_rmse', 0)),
         'train_mae': float(config.get('train_mae', 0)),
@@ -73,22 +62,19 @@ def upload_lstm_model(model_dir, experiment_name='default'):
     print(f"\n[2/3] Connecting to Hopsworks...")
     storage = get_storage('production')
     mr = storage.get_model_registry()
-    print(f"  ✅ Connected to Hopsworks Model Registry")
+    print(f"  Connected to Hopsworks Model Registry")
 
     print(f"\n[3/3] Uploading model to Hopsworks...")
 
-    # Create temporary directory with model files
     temp_dir = tempfile.mkdtemp()
 
     try:
-        # Copy all files from model_dir to temp_dir
         for file in os.listdir(model_dir):
             src = os.path.join(model_dir, file)
             dst = os.path.join(temp_dir, file)
             if os.path.isfile(src):
                 shutil.copy2(src, dst)
 
-        # Register model in Hopsworks
         model_name = "electricity_price_lstm"
         trained_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
@@ -101,19 +87,17 @@ def upload_lstm_model(model_dir, experiment_name='default'):
             ),
         )
 
-        # Upload model directory
         registered_model.save(temp_dir)
 
-        print(f"  ✅ Model uploaded to Hopsworks Model Registry!")
+        print(f"  Model uploaded to Hopsworks Model Registry!")
         print(f"     Model name: {model_name}")
         print(f"     Version: {registered_model.version}")
 
     finally:
-        # Clean up temp directory
         shutil.rmtree(temp_dir)
 
     print(f"\n{'='*70}")
-    print(f"✅ UPLOAD COMPLETE!")
+    print(f"UPLOAD COMPLETE!")
     print(f"{'='*70}")
     print(f"\nNext steps:")
     print(f"  - Check model in Hopsworks UI: Model Registry → {model_name}")
