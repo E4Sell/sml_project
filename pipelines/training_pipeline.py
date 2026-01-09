@@ -392,6 +392,7 @@ def save_lstm_model_local(model, scaler, feature_names, metrics, experiment_name
     config = {
         'lookback': lookback,
         'n_features': len(feature_names),
+        'feature_names': feature_names,
         **metrics
     }
     with open(os.path.join(model_dir, "config.json"), 'w') as f:
@@ -465,6 +466,7 @@ def save_lstm_model_hopsworks(model, scaler, feature_names, metrics, storage, ex
         config = {
             'lookback': lookback,
             'n_features': len(feature_names),
+            'feature_names': feature_names,
             **metrics
         }
         with open(os.path.join(model_dir, "config.json"), 'w') as f:
