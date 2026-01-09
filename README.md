@@ -2,6 +2,18 @@
 
 This repository contains an end-to-end machine learning project in the Scalable Machine Learning course (ID2223). The project combines weather data with historical electricity prices to produce 7-day forecasts for the Stockholm region (SE3) and includes utilities for data collection, model training (XGBoost or LSTM), and daily batch inference with output visualization.
 
+**Models:** The system supports two model architectures:
+- XGBoost: Gradient boosting model using tree-based learning with hyperparameter tuning
+- LSTM: Recurrent neural network with 14-day lookback window, using sequence-based learning with MinMaxScaler normalization
+
+**Features:** The prediction models use 20+ engineered features combining raw data with derived patterns:
+- Weather data (OpenMeteo API): temperature (mean, max, min), precipitation, wind speed, wind direction, solar radiation
+- Electricity prices (elprisetjustnu.se API): daily mean, min, max, and standard deviation
+- Temporal features: day of week, month, weekend indicator, day of year
+- Lag features: 1-day and 7-day price history
+- Rolling statistics: 7-day rolling mean and standard deviation of prices
+- Interaction features: polynomial temperature terms, wind-temperature interactions
+
 Authors: Max Dougly, Erik Forsell
 
 ---
