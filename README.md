@@ -1,16 +1,14 @@
-# ⚡ Electricity Price Predictor
+# Electricity Price Predictor
 
-An end-to-end ML system for predicting Swedish electricity prices in the Stockholm region (SE3). Combines weather data with historical electricity prices to generate 7-day forecasts, tracks prediction accuracy, and updates automatically via GitHub Actions.
+This repository contains an end-to-end machine learning project in the Scalable Machine Learning course (ID2223). The project combines weather data with historical electricity prices to produce 7-day forecasts for the Stockholm region (SE3) and includes utilities for data collection, model training (XGBoost or LSTM), and daily batch inference with output visualization.
 
-**Educational project for Scalable Machine Learning course (ID2223) at KTH Royal Institute of Technology.**
+Authors: Max Dougly, Erik Forsell
 
-**Authors:** Max Dougly, Erik Forsell
-
-**Live Demo:** [HuggingFace Space](https://huggingface.co/spaces/eforse01/Electricity_price_predictor)
+Live demo: [HuggingFace Space](https://huggingface.co/spaces/eforse01/Electricity_price_predictor)
 
 ---
 
-## 🏗️ System Architecture
+## System architecture
 
 ```mermaid
 graph LR
@@ -67,113 +65,93 @@ graph LR
 
 ---
 
-## 🔗 Important Links
+## Important links
 
 | Resource | URL |
 |----------|-----|
-| **Live App** | [HuggingFace Space](https://huggingface.co/spaces/eforse01/Electricity_price_predictor) |
-| **Feature Store** | [Hopsworks Project](https://c.app.hopsworks.ai/p/1333397/view) |
-| **Weather API** | [OpenMeteo](https://open-meteo.com/) |
-| **Price API** | [elprisetjustnu.se](https://www.elprisetjustnu.se/api/v1/prices/) |
+| Live app | [HuggingFace Space](https://huggingface.co/spaces/eforse01/Electricity_price_predictor) |
+| Feature store | [Hopsworks Project](https://c.app.hopsworks.ai/p/1333397/view) |
+| Weather API | [OpenMeteo](https://open-meteo.com/) |
+| Price API | [elprisetjustnu.se](https://www.elprisetjustnu.se/api/v1/prices/) |
 
 ---
 
-## 🧩 Components
+## Components
 
-### Data Sources
-- **OpenMeteo API** - Historical & forecast weather data (temperature, wind, precipitation, solar radiation)
-- **elprisetjustnu.se API** - Swedish electricity spot prices for SE3 region, updated daily at 13:00 CET
+### Data sources
+- OpenMeteo API: Historical and forecast weather data (temperature, wind, precipitation, solar radiation).
+- elprisetjustnu.se API: Swedish electricity spot prices for the SE3 region.
 
-### Feature Pipeline (`pipelines/feature_backfill.py`)
-Collects weather and price data, engineers 22 features including temporal patterns, lag features (1d, 7d), and rolling statistics. Saves to Hopsworks Feature Store or local Parquet files.
+### Feature pipeline (pipelines/feature_backfill.py)
+Collects weather and price data, engineers features including temporal patterns, lag features (1-day, 7-day) and rolling statistics, and writes results to the feature store or local storage.
 
-### Hopsworks Feature Store
-Cloud-based feature store storing engineered features in `electricity_price` feature group (version 1). Project ID: 1333397.
+### Feature store
+Hopsworks feature store storing engineered features in the `electricity_price` feature group (version 1). Project ID: 1333397.
 
-### Training Pipeline (`pipelines/training_pipeline.py`)
-Trains XGBoost regression model on historical features. Model achieves R² ~0.94 on test data.
+### Training pipeline (pipelines/training_pipeline.py)
+Trains models (XGBoost or LSTM) using historical features extracted from the feature store or local data.
 
-### Inference Pipeline (`pipelines/inference_pipeline.py`)
-Generates 7-day price forecasts, compares predictions with actual prices, exports CSV and PNG visualizations.
+### Inference pipeline (pipelines/inference_pipeline.py)
+Generates 7-day price forecasts, exports CSV and PNG outputs, and appends predictions to a tracking file for later comparison with actuals.
 
-### Storage Factory (`functions/storage_factory.py`)
-Unified interface supporting both local Parquet storage and Hopsworks Feature Store with the same API.
+### Storage factory (functions/storage_factory.py)
+Provides a unified interface for local Parquet storage and Hopsworks Feature Store access.
 
 ### HuggingFace Space
-Interactive Gradio web UI displaying forecast charts and prediction accuracy tracking. Auto-updates daily.
+A Gradio web UI that displays forecast charts and prediction tracking. Outputs are synchronized to the Space on a daily schedule.
 
 ---
 
-## ⚙️ Automated Jobs & Routines
+## Automated jobs and routines
 
 | Task | Schedule | Description |
 |------|----------|-------------|
-| **Feature Backfill** | Daily 06:00 UTC | Collects data from 9 days ago to 2 days ago, appends to Feature Store |
-| **Inference** | Daily 06:00 UTC | Generates 7-day forecast, creates comparison charts |
-| **Commit Outputs** | Daily 06:05 UTC | Commits CSV/PNG files to repository |
-| **Upload to HuggingFace** | Daily 06:10 UTC | Syncs outputs folder to Space, Gradio auto-refreshes |
+| Feature backfill | Daily 06:00 UTC | Collects data from 9 days ago to 2 days ago and appends to feature store. |
+| Inference | Daily 06:00 UTC | Generates 7-day forecast and comparison charts. |
+| Commit outputs | Daily 06:05 UTC | Commits CSV and PNG files to repository. |
+| Upload to HuggingFace | Daily 06:10 UTC | Syncs outputs folder to the HuggingFace Space. |
 
-**Workflow:** `.github/workflows/electricity-price-daily.yml`
+Workflow configuration: `.github/workflows/electricity-price-daily.yml`
 
-**Manual Trigger:** Available in GitHub Actions UI for immediate testing
+A manual trigger is available in the GitHub Actions UI.
 
 ---
 
-## 🚀 Quick Start
+## Quick start (minimal)
+
+A short Quick Start helps readers reproduce results quickly. The commands below are the minimum necessary to run the project in local mode.
 
 ### Installation
 
 ```bash
-git clone https://github.com/maxdougly/sml_project.git
+git clone https://github.com/E4Sell/sml_project.git
 cd sml_project
 pip install -r requirements.txt
 ```
 
-### Local Mode (No Cloud Setup)
+### Local run (minimal)
 
-**1. Collect data:**
 ```bash
+# Collect recent data (local mode)
 python pipelines/feature_backfill.py --mode local --start-date 2024-11-01
-```
 
-**2. Train model:**
-```bash
+# Train a model (default is XGBoost; add --model-type lstm to train LSTM)
 python pipelines/training_pipeline.py --mode local
-```
 
-**3. Generate forecast:**
-```bash
+# Generate a 7-day forecast
 python pipelines/inference_pipeline.py --mode local --days 7
 ```
 
-**Outputs:** `outputs/forecast_*.csv`, `outputs/forecast_*.png`, `outputs/comparison_timeseries.csv`
-
-### Production Mode (Hopsworks)
-
-Set API key and run:
-```bash
-export HOPSWORKS_API_KEY='your-key'
-python pipelines/feature_backfill.py --mode production --start-date 2023-01-01
-python pipelines/training_pipeline.py --mode production
-python pipelines/inference_pipeline.py --mode production --days 7
-```
-
-**Mode auto-detection:** If `HOPSWORKS_API_KEY` is set, defaults to production; otherwise local.
-
-### Test APIs
-
-```bash
-python tests/test_data_sources.py
-```
+For a more detailed set of instructions, see the scripts in the `pipelines/` directory.
 
 ---
 
-## 📁 Repository Structure
+## Repository structure
 
 ```
 ├── pipelines/              # Feature backfill, training, inference
 ├── functions/              # Utilities (storage, data retrieval)
-├── tests/                  # API tests
+├── tests/                  # Tests
 ├── data/                   # Local storage (Parquet, models)
 ├── outputs/                # Forecasts and charts
 └── .github/workflows/      # Daily automation
@@ -181,4 +159,4 @@ python tests/test_data_sources.py
 
 ---
 
-**Last Updated:** January 2026
+Last updated: January 2026
