@@ -106,10 +106,10 @@ A Gradio web UI that displays forecast charts and prediction tracking. Outputs a
 
 | Task | Schedule | Description |
 |------|----------|-------------|
-| Feature backfill | Daily 06:00 UTC | Collects data from 9 days ago to 2 days ago and appends to feature store. |
-| Inference | Daily 06:00 UTC | Generates 7-day forecast and comparison charts. |
-| Commit outputs | Daily 06:05 UTC | Commits CSV and PNG files to repository. |
-| Upload to HuggingFace | Daily 06:10 UTC | Syncs outputs folder to the HuggingFace Space. |
+| Feature backfill | Daily | Collects data from 9 days ago to 2 days ago and appends to feature store. |
+| Inference | Daily | Generates 7-day forecast and comparison charts. |
+| Commit outputs | Daily | Commits CSV and PNG files to repository. |
+| Upload to HuggingFace | Daily | Syncs outputs folder to the HuggingFace Space. |
 
 Workflow configuration: `.github/workflows/electricity-price-daily.yml`
 
@@ -117,9 +117,9 @@ A manual trigger is available in the GitHub Actions UI.
 
 ---
 
-## Quick start (minimal)
+## Quick start
 
-A short Quick Start helps readers reproduce results quickly. The commands below are the minimum necessary to run the project in local mode.
+A short quick start guide, the commands below are the minimum necessary to run the project in local mode.
 
 ### Installation
 
@@ -142,8 +142,6 @@ python pipelines/training_pipeline.py --mode local
 python pipelines/inference_pipeline.py --mode local --days 7
 ```
 
-For a more detailed set of instructions, see the scripts in the `pipelines/` directory.
-
 ---
 
 ## Repository structure
@@ -156,7 +154,3 @@ For a more detailed set of instructions, see the scripts in the `pipelines/` dir
 ├── outputs/                # Forecasts and charts
 └── .github/workflows/      # Daily automation
 ```
-
----
-
-Last updated: January 2026
