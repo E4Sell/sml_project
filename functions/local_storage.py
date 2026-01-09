@@ -1,7 +1,4 @@
-"""
-Local storage functions for testing without Hopsworks.
-Mimics Hopsworks Feature Store behavior using Parquet files.
-"""
+"""Local storage mimicking Hopsworks Feature Store using Parquet files."""
 
 import pandas as pd
 import os
@@ -9,9 +6,7 @@ from datetime import datetime
 
 
 class LocalFeatureGroup:
-    """
-    Mimics Hopsworks Feature Group behavior using local Parquet files.
-    """
+    """Mimics Hopsworks Feature Group using local Parquet files."""
 
     def __init__(self, name, version=1, base_path="data/processed"):
         self.name = name
@@ -20,19 +15,11 @@ class LocalFeatureGroup:
         self.file_path = os.path.join(base_path, f"{name}_v{version}.parquet")
 
     def insert(self, df, overwrite=False, write_options=None):
-        """
-        Insert data into feature group (append or overwrite).
-
-        Args:
-            df (pd.DataFrame): Data to insert
-            overwrite (bool): If True, replace existing data
-            write_options (dict): Ignored (for Hopsworks compatibility)
-        """
         os.makedirs(self.base_path, exist_ok=True)
 
         if overwrite or not os.path.exists(self.file_path):
             df.to_parquet(self.file_path, index=False)
-            print(f"✓ Saved {len(df)} rows to {self.file_path}")
+            print(f"Saved {len(df)} rows to {self.file_path}")
         else:
             # Append mode: read existing, concat, save
             existing_df = pd.read_parquet(self.file_path)
@@ -41,34 +28,23 @@ class LocalFeatureGroup:
             if 'date' in combined_df.columns and 'city' in combined_df.columns:
                 combined_df = combined_df.drop_duplicates(subset=['date', 'city'], keep='last')
             combined_df.to_parquet(self.file_path, index=False)
-            print(f"✓ Appended {len(df)} rows to {self.file_path} (total: {len(combined_df)} rows)")
+            print(f"Appended {len(df)} rows to {self.file_path} (total: {len(combined_df)} rows)")
 
     def read(self):
-        """
-        Read all data from feature group.
-
-        Returns:
-            pd.DataFrame: All data
-        """
         if not os.path.exists(self.file_path):
-            print(f"⚠ No data file found at {self.file_path}")
+            print(f"No data file found at {self.file_path}")
             return pd.DataFrame()
 
         df = pd.read_parquet(self.file_path)
-        print(f"✓ Loaded {len(df)} rows from {self.file_path}")
+        print(f"Loaded {len(df)} rows from {self.file_path}")
         return df
 
     def select_all(self):
-        """
-        Return self for query building (Hopsworks compatibility).
-        """
         return self
 
 
 class LocalFeatureView:
-    """
-    Mimics Hopsworks Feature View behavior using local data.
-    """
+    """Mimics Hopsworks Feature View using local data."""
 
     def __init__(self, name, feature_group, labels=None):
         self.name = name
@@ -76,25 +52,10 @@ class LocalFeatureView:
         self.labels = labels or []
 
     def get_batch_data(self):
-        """
-        Get all data from feature view.
-
-        Returns:
-            pd.DataFrame: All data
-        """
         return self.feature_group.read()
 
     def train_test_split(self, test_size=0.2, description=''):
-        """
-        Split data into train/test sets (time-based split).
-
-        Args:
-            test_size (float): Proportion of data for testing
-            description (str): Ignored (for compatibility)
-
-        Returns:
-            tuple: (X_train, X_test, y_train, y_test)
-        """
+        """Time-based train/test split."""
         df = self.get_batch_data()
 
         if df.empty:
@@ -123,15 +84,13 @@ class LocalFeatureView:
         X_test['date'] = test_df['date'].values
         X_test['city'] = test_df['city'].values
 
-        print(f"✓ Train/test split: {len(X_train)} train, {len(X_test)} test")
+        print(f"Train/test split: {len(X_train)} train, {len(X_test)} test")
 
         return X_train, X_test, y_train, y_test
 
 
 class LocalFeatureStore:
-    """
-    Mimics Hopsworks Feature Store using local file system.
-    """
+    """Mimics Hopsworks Feature Store using local file system."""
 
     def __init__(self, base_path="data/processed"):
         self.base_path = base_path
@@ -139,50 +98,15 @@ class LocalFeatureStore:
 
     def get_or_create_feature_group(self, name, version=1, description='',
                                      primary_key=None, event_time=None):
-        """
-        Get or create a local feature group.
-
-        Args:
-            name (str): Feature group name
-            version (int): Version number
-            description (str): Ignored (for compatibility)
-            primary_key (list): Ignored (for compatibility)
-            event_time (str): Ignored (for compatibility)
-
-        Returns:
-            LocalFeatureGroup: Feature group object
-        """
         return LocalFeatureGroup(name, version, self.base_path)
 
     def get_feature_group(self, name, version=1):
-        """
-        Get existing feature group.
-
-        Args:
-            name (str): Feature group name
-            version (int): Version number
-
-        Returns:
-            LocalFeatureGroup: Feature group object
-        """
         fg = LocalFeatureGroup(name, version, self.base_path)
         if not os.path.exists(fg.file_path):
             raise Exception(f"Feature group {name} v{version} not found")
         return fg
 
     def get_or_create_feature_view(self, name, version=1, query=None, labels=None):
-        """
-        Get or create a feature view.
-
-        Args:
-            name (str): Feature view name
-            version (int): Version number
-            query: Feature group to query (LocalFeatureGroup)
-            labels (list): Label column names
-
-        Returns:
-            LocalFeatureView: Feature view object
-        """
         if query is None:
             raise ValueError("query (feature_group) is required")
 
@@ -190,50 +114,24 @@ class LocalFeatureStore:
 
 
 class LocalModelRegistry:
-    """
-    Mimics Hopsworks Model Registry using local file system.
-    """
+    """Mimics Hopsworks Model Registry using local file system."""
 
     def __init__(self, base_path="data/models"):
         self.base_path = base_path
         os.makedirs(base_path, exist_ok=True)
 
     def python(self):
-        """Return self for chaining (Hopsworks compatibility)."""
         return self
 
     def create_model(self, name, metrics=None, description=''):
-        """
-        Create a model entry.
-
-        Args:
-            name (str): Model name
-            metrics (dict): Model metrics
-            description (str): Model description
-
-        Returns:
-            LocalModel: Model object
-        """
         return LocalModel(name, self.base_path, metrics, description)
 
     def get_model(self, name, version=1):
-        """
-        Get existing model.
-
-        Args:
-            name (str): Model name
-            version (int): Version number
-
-        Returns:
-            LocalModel: Model object
-        """
         return LocalModel(name, self.base_path, version=version)
 
 
 class LocalModel:
-    """
-    Mimics Hopsworks Model object.
-    """
+    """Mimics Hopsworks Model object."""
 
     def __init__(self, name, base_path, metrics=None, description='', version=1):
         self.name = name
@@ -244,12 +142,6 @@ class LocalModel:
         self.model_dir = os.path.join(base_path, f"{name}_v{version}")
 
     def save(self, local_path):
-        """
-        Save model files to registry.
-
-        Args:
-            local_path (str): Path to model directory
-        """
         import shutil
 
         if os.path.exists(self.model_dir):
@@ -270,26 +162,18 @@ class LocalModel:
         with open(os.path.join(self.model_dir, 'metadata.json'), 'w') as f:
             json.dump(metadata, f, indent=2)
 
-        print(f"✓ Model saved to {self.model_dir}")
+        print(f"Model saved to {self.model_dir}")
 
     def download(self):
-        """
-        Download (return path to) model directory.
-
-        Returns:
-            str: Path to model directory
-        """
         if not os.path.exists(self.model_dir):
             raise Exception(f"Model {self.name} v{self.version} not found")
 
-        print(f"✓ Model loaded from {self.model_dir}")
+        print(f"Model loaded from {self.model_dir}")
         return self.model_dir
 
 
 class LocalProject:
-    """
-    Mimics Hopsworks Project object.
-    """
+    """Mimics Hopsworks Project object."""
 
     def __init__(self, name="local_project"):
         self.name = name
@@ -297,20 +181,13 @@ class LocalProject:
         self._mr = LocalModelRegistry()
 
     def get_feature_store(self):
-        """Get feature store."""
         return self._fs
 
     def get_model_registry(self):
-        """Get model registry."""
         return self._mr
 
 
 def get_local_project():
-    """
-    Get a local project (no Hopsworks connection needed).
-
-    Returns:
-        LocalProject: Local project for testing
-    """
-    print("✓ Using LOCAL storage (no Hopsworks)")
+    """Get local project for testing without Hopsworks."""
+    print("Using LOCAL storage (no Hopsworks)")
     return LocalProject("local_electricity_prediction")

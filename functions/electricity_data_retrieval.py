@@ -1,24 +1,11 @@
-"""
-Functions for retrieving electricity price data and predictions from Hopsworks Feature Store.
-Similar to air_quality_data_retrieval.py from the lab project.
-"""
+"""Retrieve electricity price data and predictions from Hopsworks Feature Store."""
 
 import pandas as pd
 from datetime import datetime, timedelta
 
 
 def get_historical_data_for_date(feature_view, date_str, city="Stockholm"):
-    """
-    Retrieve historical electricity price data for a specific date from feature view.
-
-    Args:
-        feature_view: Hopsworks feature view object
-        date_str (str): Date in format 'YYYY-MM-DD'
-        city (str): City name (default: Stockholm)
-
-    Returns:
-        pd.DataFrame: Historical data for the specified date
-    """
+    """Retrieve historical electricity price data for specific date."""
     try:
         # Get batch data from feature view
         df = feature_view.get_batch_data()
@@ -40,18 +27,7 @@ def get_historical_data_for_date(feature_view, date_str, city="Stockholm"):
 
 
 def get_historical_data_in_date_range(feature_view, start_date_str, end_date_str, city="Stockholm"):
-    """
-    Retrieve historical electricity price data for a date range from feature view.
-
-    Args:
-        feature_view: Hopsworks feature view object
-        start_date_str (str): Start date in format 'YYYY-MM-DD'
-        end_date_str (str): End date in format 'YYYY-MM-DD'
-        city (str): City name (default: Stockholm)
-
-    Returns:
-        pd.DataFrame: Historical data for the date range
-    """
+    """Retrieve historical electricity price data for date range."""
     try:
         # Get batch data from feature view
         df = feature_view.get_batch_data()
@@ -82,18 +58,7 @@ def get_historical_data_in_date_range(feature_view, start_date_str, end_date_str
 
 
 def get_future_data_for_date(feature_view, model, date_str, city="Stockholm"):
-    """
-    Generate electricity price prediction for a specific future date.
-
-    Args:
-        feature_view: Hopsworks feature view object
-        model: Trained XGBoost model
-        date_str (str): Future date in format 'YYYY-MM-DD'
-        city (str): City name (default: Stockholm)
-
-    Returns:
-        pd.DataFrame: Prediction for the specified date with columns ['date', 'predicted_price']
-    """
+    """Generate electricity price prediction for specific future date."""
     try:
         # Get forecast data from weather feature group
         # This assumes weather forecasts have been written to a feature group
@@ -131,19 +96,7 @@ def get_future_data_for_date(feature_view, model, date_str, city="Stockholm"):
 
 
 def get_future_data_in_date_range(feature_view, model, start_date_str, end_date_str, city="Stockholm"):
-    """
-    Generate electricity price predictions for a date range.
-
-    Args:
-        feature_view: Hopsworks feature view object
-        model: Trained XGBoost model
-        start_date_str (str): Start date in format 'YYYY-MM-DD'
-        end_date_str (str): End date in format 'YYYY-MM-DD'
-        city (str): City name (default: Stockholm)
-
-    Returns:
-        pd.DataFrame: Predictions for the date range with columns ['date', 'predicted_price']
-    """
+    """Generate electricity price predictions for date range."""
     try:
         # Get forecast data
         df = feature_view.get_batch_data()
@@ -187,18 +140,7 @@ def get_future_data_in_date_range(feature_view, model, start_date_str, end_date_
 
 
 def get_predictions_from_feature_group(fs, fg_name="electricity_price_predictions", city="Stockholm", days=7):
-    """
-    Retrieve the latest predictions from the predictions feature group.
-
-    Args:
-        fs: Hopsworks feature store object
-        fg_name (str): Feature group name for predictions
-        city (str): City name (default: Stockholm)
-        days (int): Number of days of predictions to retrieve
-
-    Returns:
-        pd.DataFrame: Latest predictions
-    """
+    """Retrieve latest predictions from predictions feature group."""
     try:
         fg = fs.get_feature_group(fg_name)
         df = fg.read()
