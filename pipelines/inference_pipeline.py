@@ -501,6 +501,17 @@ def predict_with_lstm(lstm_model, scaler, config, historical_df, weather_forecas
     # Extract features (exclude date, already have feature_cols from config)
     data = combined_df[feature_cols].values
 
+    data_df = combined_df[feature_cols].copy()
+    data_df = data_df.replace([np.inf, -np.inf], np.nan)
+    data_df = data_df.fillna(method="ffill").fillna(method="bfill")
+    data_df = data_df.fillna(data_df.mean(numeric_only=True))
+    
+    if data_df.isna().any().any():
+        bad = data_df.isna().sum().sort_values(ascending=False)
+        raise ValueError(f"NaNs still present after cleaning:\n{bad[bad > 0].head(20)}")
+      
+    data = data_df.values
+
     # Scale data
     data_scaled = scaler.transform(data)
 
